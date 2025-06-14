@@ -1,5 +1,5 @@
 [package]
-name = "TagManager"
+name = "tag_manager"
 version = "0.1.0"
 edition = "2024"
 
@@ -14,3 +14,4 @@ reqwest = { version = "0.11", features = ["multipart", "json", "stream", "blocki
 serde_json = "1.0.140"
 serde = { version = "1.0.219", features = ["derive"] }
 rayon = "1.10.0"
+futures = "0.3.31"
