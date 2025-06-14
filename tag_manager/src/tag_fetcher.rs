@@ -21,10 +21,9 @@ pub async fn fetch_tags(image: &DynamicImage) -> Result<Tags, Box<dyn std::error
         .send()
         .await?;
 
-    let status = response.status();
     let body = response.text().await?;
 
-    return Ok(serde_json::from_str(&body)?);
+    Ok(serde_json::from_str(&body)?)
 }
 
 #[derive(serde::Deserialize)]
@@ -43,15 +42,4 @@ pub enum Rating {
     Sensitive,
     Questionable,
     Explicit,
-}
-
-impl Rating{
-    pub fn to_dbformat(&self) ->&'static str{
-        match self{
-            &Rating::General => "general",
-            &Rating::Sensitive => "sensitive",
-            &Rating::Questionable => "questionable",
-            &Rating::Explicit => "explicit",
-        }
-    }
 }

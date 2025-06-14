@@ -1,4 +1,4 @@
-use std::{ops::Deref, path::{Path, PathBuf}};
+use std::{ops::Deref, path::PathBuf};
 
 use uuid::Uuid;
 

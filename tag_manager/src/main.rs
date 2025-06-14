@@ -1,4 +1,4 @@
-use std::{clone, collections::HashMap, env, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, env, path::PathBuf, str::FromStr};
 
 use crate::database::Database;
 mod database;
@@ -6,8 +6,8 @@ use database::SqlDatabase;
 use dotenv::dotenv;
 use processor::process_images;
 
-mod processor;
 mod image_path;
+mod processor;
 mod tag_fetcher;
 
 #[tokio::main]
@@ -45,20 +45,4 @@ impl Config {
             .expect("Invalid discarded dir"),
         }
     }
-}
-
-fn test() {
-    // Load both images
-    let img1 = image::open("TestImages/laffey.jpeg").unwrap();
-    let img2 = image::open("TestImages/2.png").unwrap();
-
-    // Generate hashes
-    let hash1 = imagehash::average_hash(&img1);
-    let hash2 = imagehash::average_hash(&img2);
-    // Compare hashes using Hamming distance
-
-    println!("Hash 1: {}", hash1);
-    println!("Hash 2: {}", hash2);
-
-    println!("hash1 : {:?}", hash1.to_bytes());
 }

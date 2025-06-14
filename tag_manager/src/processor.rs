@@ -70,9 +70,3 @@ async fn process_image(
     tokio::fs::remove_file(path).await?;
     Ok(id)
 }
-
-enum Destination {
-    Import,
-    Storage,
-    Discarded,
-}
