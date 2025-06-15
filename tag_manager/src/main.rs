@@ -35,12 +35,18 @@ impl Config {
                 .get("DATABASE_URL")
                 .expect("database connection string is required")
                 .to_string(),
-            storage_path: PathBuf::from_str(env.get("STORAGE_DIR").expect("storage path required"))
-                .expect("Invalid path"),
-            import_path: PathBuf::from_str(env.get("IMPORT_DIR").expect("import dir required"))
-                .expect("Invalid import path"),
+            storage_path: PathBuf::from_str(
+                env.get("STORAGE_DIR")
+                    .map_or("/Images/Storage", |v| v),
+            )
+            .expect("Invalid path"),
+            import_path: PathBuf::from_str(
+                env.get("IMPORT_DIR").map_or("/Images/Import", |v| v),
+            )
+            .expect("Invalid import path"),
             discarded_path: PathBuf::from_str(
-                env.get("DISCARDED_DIR").expect("DISCARDED_DIR required"),
+                env.get("DISCARDED_DIR")
+                    .map_or("/Images/Discard", |v| v),
             )
             .expect("Invalid discarded dir"),
         }
