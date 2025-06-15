@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, http::header, post, web};
 use database::{Database, SqlDatabase, SqlDatabaseError};
 use dotenv::dotenv;
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 mod database;
 
@@ -11,22 +12,26 @@ async fn main() -> std::io::Result<()> {
     let _ = dotenv().ok();
     let db = get_db().await.unwrap();
 
+    println!("Starting api server");
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(db.clone()))
             .service(hello)
             .service(echo)
+            .service(find_images)
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(("0.0.0.0", 8081))?
     .run()
     .await
 }
+
+static IMAGE_URL_PREFIX : &str = "http://127.0.0.1:8080/image";
 
 async fn get_db() -> Result<SqlDatabase, Box<dyn std::error::Error>> {
     let map: HashMap<String, String> = HashMap::from_iter(std::env::vars());
 
     let connection_string = map.get("DATABASE_URL").unwrap();
-    let storage_path = map.get("STORAGE_DIR").unwrap();
+    let storage_path = map.get("STORAGE_DIR").map_or("/Images/Storage", |v| v);
 
     Ok(SqlDatabase::new(connection_string, storage_path.into()).await?)
 }
@@ -67,4 +72,39 @@ async fn echo(data: web::Data<SqlDatabase>, id: web::Path<u32>) -> impl Responde
     HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "image/png"))
         .body(buffer)
+}
+
+#[derive(Debug, Deserialize)]
+struct FindImageRequest{
+    characters: Option<String>,
+    tags: Option<String>,
+}
+
+#[get("/images")]
+async fn find_images(data : web::Data<SqlDatabase>, query : web::Query<FindImageRequest>) ->impl Responder {
+    let characters : Option<Vec<_>> = query.characters.as_ref().map(|x| x.split(',').collect());
+    let tags : Option<Vec<_>> = query.tags.as_ref().map(|x| x.split(',').collect());
+
+    let ids = match data.get_filtered_images(characters, dbg!(tags)).await{
+        Ok(ids) => ids,
+        Err(e) => {
+            println!("Error: {:?}", e);
+            return HttpResponse::InternalServerError().body("PAIN");
+        }
+    };
+
+    let ids : Vec<_> = ids.iter().map(|x| {
+        FindImageResponse{
+            id: x.id,
+            url: format!("{}/{}", IMAGE_URL_PREFIX, x.id)
+        }
+    }).collect();
+
+    HttpResponse::Ok().json(ids)
+}
+
+#[derive(Serialize)]
+struct FindImageResponse{
+    id: i32,
+    url : String,
 }

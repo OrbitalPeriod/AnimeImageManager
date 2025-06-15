@@ -1,0 +1,12 @@
+services:
+  tagmonolith:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tagmonolith
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - /home/orbital/Pictures/storage:/Images

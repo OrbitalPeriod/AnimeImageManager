@@ -1,12 +1,13 @@
-use std::{error::Error, fs::DirEntry};
+use std::{error::Error, fs::DirEntry, path::PathBuf};
 
 use futures::{StreamExt, stream};
+use image::DynamicImage;
 use uuid::Uuid;
 
 use crate::{database::Database, image_path::ImagePath, tag_fetcher};
 
 pub async fn process_images(
-    database: impl Database + Clone,
+    database: &(impl Database + Clone),
 ) -> Result<(), Box<dyn Error>> {
     let files: Vec<_> = std::fs::read_dir(database.config().import_path.clone())
         .unwrap()
@@ -34,7 +35,7 @@ pub async fn process_images(
                 }
             }
         })
-        .buffer_unordered(4) // Limit concurrency to 4 tasks
+        .buffer_unordered(12) // Limit concurrency to 4 tasks
         .collect::<Vec<_>>() // Wait for all tasks to finish
         .await;
     Ok(())
@@ -45,9 +46,8 @@ async fn process_image(
     file: &DirEntry,
 ) -> Result<u32, Box<dyn Error + Send + Sync>> {
     let path = file.path();
-    let image = image::io::Reader::open(&path)?
-        .with_guessed_format()?
-        .decode()?;
+    let path_n = path.clone();
+    let image = tokio::task::spawn_blocking(move || image::io::Reader::open(&path_n).map(|ok| ok.with_guessed_format().map(|okk| okk.decode()))).await????;
     let hash: [u8; 8] = imagehash::average_hash(&image)
         .to_bytes()
         .try_into()
@@ -60,7 +60,7 @@ async fn process_image(
     let id = database.save_image(&hash, &tags).await?;
 
     let new_path = ImagePath::to_destination(&database.config().storage_path, id).path;
-    if let Err(e) = image.save_with_format(new_path, image::ImageFormat::Png) {
+    if let Err(e) = tokio::task::spawn_blocking(move || image.save_with_format(new_path, image::ImageFormat::Png)).await? {
         println!(
             "Error saving file!!! bad!!!!, remove {}, from db, {}",
             id, e
@@ -70,3 +70,4 @@ async fn process_image(
     tokio::fs::remove_file(path).await?;
     Ok(id)
 }
+

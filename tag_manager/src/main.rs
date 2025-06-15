@@ -1,10 +1,11 @@
-use std::{collections::HashMap, env, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, env, path::PathBuf, str::FromStr, time::Duration};
 
 use crate::database::Database;
 mod database;
 use database::SqlDatabase;
 use dotenv::dotenv;
 use processor::process_images;
+use tokio::time::sleep;
 
 mod image_path;
 mod processor;
@@ -16,7 +17,10 @@ async fn main() {
     let config = Config::create();
     let database = SqlDatabase::create(&config).await.unwrap();
 
-    process_images(database).await.unwrap();
+    loop {
+        process_images(&database).await.unwrap();
+        sleep(Duration::new(120, 0)).await;
+    }
 }
 
 #[derive(Clone)]
@@ -36,17 +40,13 @@ impl Config {
                 .expect("database connection string is required")
                 .to_string(),
             storage_path: PathBuf::from_str(
-                env.get("STORAGE_DIR")
-                    .map_or("/Images/Storage", |v| v),
+                env.get("STORAGE_DIR").map_or("/Images/Storage", |v| v),
             )
             .expect("Invalid path"),
-            import_path: PathBuf::from_str(
-                env.get("IMPORT_DIR").map_or("/Images/Import", |v| v),
-            )
-            .expect("Invalid import path"),
+            import_path: PathBuf::from_str(env.get("IMPORT_DIR").map_or("/Images/Import", |v| v))
+                .expect("Invalid import path"),
             discarded_path: PathBuf::from_str(
-                env.get("DISCARDED_DIR")
-                    .map_or("/Images/Discard", |v| v),
+                env.get("DISCARDED_DIR").map_or("/Images/Discard", |v| v),
             )
             .expect("Invalid discarded dir"),
         }
