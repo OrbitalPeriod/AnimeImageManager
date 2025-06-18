@@ -1,13 +1,52 @@
 use std::{path::PathBuf, sync::OnceLock};
 
+use serde::Deserialize;
+
 pub trait Database {
-    async fn get_image_location(&self, id: u32) -> Result<PathBuf, SqlDatabaseError>;
+    async fn get_image_location(
+        &self,
+        id: u32,
+        auth_level: AuthLevel,
+    ) -> Result<PathBuf, SqlDatabaseError>;
 
     async fn get_filtered_images(
         &self,
         characters: Option<Vec<&str>>,
         tags: Option<Vec<&str>>,
+        rating : Option<Rating>
     ) -> Result<Vec<Image>, sqlx::error::Error>;
+
+    async fn get_auth_level(&self, token: &str) -> Result<AuthLevel, SqlDatabaseError>;
+}
+
+#[derive(Debug, Clone, Copy, sqlx::Type, PartialEq, Eq)]
+#[sqlx(type_name = "rating")]
+#[sqlx(rename_all = "PascalCase")]
+pub enum AuthLevel {
+    Guest,
+    User,
+    PrivilegedUser,
+    Admin,
+}
+
+impl AuthLevel {
+    fn is_allowed(&self, rating: Rating) -> bool {
+        match self {
+            AuthLevel::Admin => true,
+            AuthLevel::PrivilegedUser => true,
+            _ => rating == Rating::General || rating == Rating::Sensitive,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, sqlx::Type, PartialEq, Eq, Deserialize)]
+#[sqlx(type_name = "rating")]
+#[sqlx(rename_all = "lowercase")]
+pub enum Rating {
+    General,
+    Sensitive,
+    Questionable,
+    Explicit,
 }
 
 #[derive(Clone, Debug)]
@@ -26,23 +65,34 @@ impl SqlDatabase {
 }
 
 impl Database for SqlDatabase {
-    async fn get_image_location(&self, id: u32) -> Result<PathBuf, SqlDatabaseError> {
-        let test: i32 =
-            sqlx::query_scalar!("SELECT id FROM image WHERE id = $1 LIMIT 1", id as i32)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(SqlDatabaseError::SqlxError)?
-                .ok_or(SqlDatabaseError::FileNotFound)?;
+    async fn get_image_location(
+        &self,
+        id: u32,
+        auth_level: AuthLevel,
+    ) -> Result<PathBuf, SqlDatabaseError> {
+        let record = sqlx::query!(
+            "SELECT id, rating as \"rating:Rating\" FROM image WHERE id = $1 LIMIT 1",
+            id as i32
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(SqlDatabaseError::SqlxError)?
+        .ok_or(SqlDatabaseError::NotFound)?;
 
-        let path = IMAGE_PATH.get().unwrap().join(format!("{}.png", test));
+        if auth_level.is_allowed(record.rating) {
+            let path = IMAGE_PATH.get().unwrap().join(format!("{}.png", record.id));
 
-        Ok(path)
+            Ok(path)
+        } else {
+            Err(SqlDatabaseError::NotAllowed)
+        }
     }
 
     async fn get_filtered_images(
         &self,
         characters: Option<Vec<&str>>,
         tags: Option<Vec<&str>>,
+        rating : Option<Rating>,
     ) -> Result<Vec<Image>, sqlx::error::Error> {
         let tag_slice = tags.as_deref();
         let character_slice = characters.as_deref();
@@ -59,17 +109,33 @@ impl Database for SqlDatabase {
                 ($1 IS NULL OR t.tag = ANY($1::text[]))
             AND
                 ($2 IS NULL OR c.character = ANY($2::text[]))
+            AND 
+                ($3 IS NULL OR i.rating = $3)
             GROUP BY i.id
             HAVING
                 ($1 IS NULL OR COUNT(DISTINCT t.tag) = cardinality($1))
             AND
-                ($2 IS NULL OR COUNT(DISTINCT c.character) = cardinality($2));
+                ($2 IS NULL OR COUNT(DISTINCT c.character) = cardinality($2))
             "#,
         )
         .bind(tag_slice)
         .bind(character_slice)
+        .bind(rating)
         .fetch_all(&self.pool)
         .await
+    }
+
+    async fn get_auth_level(&self, token: &str) -> Result<AuthLevel, SqlDatabaseError> {
+        let t = sqlx::query!(
+            "SELECT level as \"level:AuthLevel\" FROM auth WHERE token = digest($1, 'sha256')",
+            token
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(SqlDatabaseError::SqlxError)?
+        .ok_or(SqlDatabaseError::NotFound)?;
+
+        Ok(t.level)
     }
 }
 
@@ -80,6 +146,7 @@ pub struct Image {
 
 #[derive(Debug)]
 pub enum SqlDatabaseError {
-    FileNotFound,
+    NotFound,
     SqlxError(sqlx::error::Error),
+    NotAllowed,
 }

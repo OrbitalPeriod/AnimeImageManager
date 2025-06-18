@@ -1,13 +1,13 @@
-use std::{str::FromStr, sync::OnceLock};
+use std::str::FromStr;
 
-use actix_web::{App, HttpResponse, HttpServer, Responder, get, http::header, web};
-use database::{Database, SqlDatabase, SqlDatabaseError};
+use actix_web::{middleware::Logger, web, App, HttpServer};
+use database::SqlDatabase;
 use dotenv::dotenv;
 use endpoints::{find_images, image, root};
-use serde::{Deserialize, Serialize};
-use tokio::io::AsyncReadExt;
 mod database;
 use anyhow::Result;
+use env_logger::Env;
+use log::info;
 
 mod endpoints;
 mod response;
@@ -15,6 +15,9 @@ mod response;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let _ = dotenv();
+
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
+
     let config = load_config().unwrap();
     load_statics(&config).unwrap();
     let db = get_db(&config).await.unwrap();
@@ -23,9 +26,10 @@ async fn main() -> std::io::Result<()> {
         config.port,
     );
 
-    println!("Starting api server on {}", address);
+    info!("Starting api server on {}", address);
     HttpServer::new(move || {
         App::new()
+            .wrap(Logger::default())
             .app_data(web::Data::new(db.clone()))
             .service(root)
             .service(find_images)
