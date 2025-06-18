@@ -1,6 +1,4 @@
-use std::path::PathBuf;
-
-use actix_web::web::to;
+use std::{path::PathBuf, sync::OnceLock};
 
 pub trait Database {
     async fn get_image_location(&self, id: u32) -> Result<PathBuf, SqlDatabaseError>;
@@ -15,17 +13,15 @@ pub trait Database {
 #[derive(Clone, Debug)]
 pub struct SqlDatabase {
     pool: sqlx::postgres::PgPool,
-    path: PathBuf,
 }
 
+pub static IMAGE_PATH: OnceLock<PathBuf> = OnceLock::new();
+
 impl SqlDatabase {
-    pub async fn new(connection_string: &str, path: PathBuf) -> Result<Self, sqlx::error::Error> {
+    pub async fn new(connection_string: &str) -> Result<Self, sqlx::error::Error> {
         let pool = sqlx::postgres::PgPool::connect(connection_string).await?;
 
-        Ok(Self {
-            pool,
-            path: path.clone(),
-        })
+        Ok(Self { pool })
     }
 }
 
@@ -35,10 +31,10 @@ impl Database for SqlDatabase {
             sqlx::query_scalar!("SELECT id FROM image WHERE id = $1 LIMIT 1", id as i32)
                 .fetch_optional(&self.pool)
                 .await
-                .map_err(|x| SqlDatabaseError::SqlxError(x))?
+                .map_err(SqlDatabaseError::SqlxError)?
                 .ok_or(SqlDatabaseError::FileNotFound)?;
 
-        let path = self.path.join(format!("{}.png", test));
+        let path = IMAGE_PATH.get().unwrap().join(format!("{}.png", test));
 
         Ok(path)
     }

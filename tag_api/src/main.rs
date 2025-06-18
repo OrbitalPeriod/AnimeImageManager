@@ -1,18 +1,25 @@
-use std::collections::HashMap;
+use std::{str::FromStr, sync::OnceLock};
 
-use actix_web::{App, HttpResponse, HttpServer, Responder, get, http::header, post, web};
+use actix_web::{App, HttpResponse, HttpServer, Responder, get, http::header, web};
 use database::{Database, SqlDatabase, SqlDatabaseError};
 use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 mod database;
+use anyhow::{Result};
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> std::io::Result<()>{
     let _ = dotenv().ok();
-    let db = get_db().await.unwrap();
+    let config = load_config().unwrap();
+    load_statics(&config).unwrap();
+    let db = get_db(&config).await.unwrap();
+    let address = std::net::SocketAddr::new(
+        std::net::IpAddr::from_str(&config.address).unwrap(),
+        config.port,
+    );
 
-    println!("Starting api server");
+    println!("Starting api server on {}", address);
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(db.clone()))
@@ -20,20 +27,45 @@ async fn main() -> std::io::Result<()> {
             .service(echo)
             .service(find_images)
     })
-    .bind(("0.0.0.0", 8081))?
+    .bind(address)?
     .run()
     .await
 }
 
-static IMAGE_URL_PREFIX : &str = "http://127.0.0.1:8080/image";
+#[derive(Clone, Debug)]
+struct Config {
+    address: String,
+    port: u16,
+    database_url : String,
+    image_url_prefix: String,
+    image_storage_path: String,
+}
 
-async fn get_db() -> Result<SqlDatabase, Box<dyn std::error::Error>> {
-    let map: HashMap<String, String> = HashMap::from_iter(std::env::vars());
+fn load_config() -> Result<Config> {
+    Ok(Config {
+            address: std::env::var("API_ADDRESS").unwrap_or("0.0.0.0".into()),
+            port: std::env::var("API_PORT")
+                .map(|x| x.parse().unwrap())
+                .unwrap_or(8081),
+            image_url_prefix: std::env::var("IMAGE_URL_PREFIX")
+                .unwrap_or("https://127.0.0.1:8080/image".to_string()),
+            image_storage_path: std::env::var("STORAGE_DIR").unwrap_or("/Images/Storage".to_string()),
+            database_url: std::env::var("DATABASE_URL")?,
+        })
+}
+fn load_statics(config: &Config) -> Result<()>{
+    IMAGE_URL_PREFIX
+        .set(config.image_url_prefix.clone())
+        .unwrap();
+    database::IMAGE_PATH.set(config.image_storage_path.clone().into()).unwrap();
 
-    let connection_string = map.get("DATABASE_URL").unwrap();
-    let storage_path = map.get("STORAGE_DIR").map_or("/Images/Storage", |v| v);
+    Ok(())
+}
 
-    Ok(SqlDatabase::new(connection_string, storage_path.into()).await?)
+static IMAGE_URL_PREFIX: OnceLock<String> = OnceLock::new();
+
+async fn get_db(config: &Config) -> Result<SqlDatabase> {
+    Ok(SqlDatabase::new(&config.database_url).await?)
 }
 
 #[get("/")]
@@ -43,7 +75,9 @@ async fn hello(_: web::Data<SqlDatabase>) -> impl Responder {
 
 #[get("/image/{id}")]
 async fn echo(data: web::Data<SqlDatabase>, id: web::Path<u32>) -> impl Responder {
-    let path = match data.get_image_location(id.into_inner()).await {
+    let id = id.into_inner();
+
+    let path = match data.get_image_location(id).await {
         Ok(path) => path,
         Err(SqlDatabaseError::FileNotFound) => {
             return HttpResponse::BadRequest().body("Incorrect image id");
@@ -75,17 +109,20 @@ async fn echo(data: web::Data<SqlDatabase>, id: web::Path<u32>) -> impl Responde
 }
 
 #[derive(Debug, Deserialize)]
-struct FindImageRequest{
+struct FindImageRequest {
     characters: Option<String>,
     tags: Option<String>,
 }
 
 #[get("/images")]
-async fn find_images(data : web::Data<SqlDatabase>, query : web::Query<FindImageRequest>) ->impl Responder {
-    let characters : Option<Vec<_>> = query.characters.as_ref().map(|x| x.split(',').collect());
-    let tags : Option<Vec<_>> = query.tags.as_ref().map(|x| x.split(',').collect());
+async fn find_images(
+    data: web::Data<SqlDatabase>,
+    query: web::Query<FindImageRequest>,
+) -> impl Responder {
+    let characters: Option<Vec<_>> = query.characters.as_ref().map(|x| x.split(',').collect());
+    let tags: Option<Vec<_>> = query.tags.as_ref().map(|x| x.split(',').collect());
 
-    let ids = match data.get_filtered_images(characters, dbg!(tags)).await{
+    let ids = match data.get_filtered_images(characters, tags).await {
         Ok(ids) => ids,
         Err(e) => {
             println!("Error: {:?}", e);
@@ -93,18 +130,19 @@ async fn find_images(data : web::Data<SqlDatabase>, query : web::Query<FindImage
         }
     };
 
-    let ids : Vec<_> = ids.iter().map(|x| {
-        FindImageResponse{
+    let ids: Vec<_> = ids
+        .iter()
+        .map(|x| FindImageResponse {
             id: x.id,
-            url: format!("{}/{}", IMAGE_URL_PREFIX, x.id)
-        }
-    }).collect();
+            url: format!("{}/{}", IMAGE_URL_PREFIX.get().unwrap(), x.id),
+        })
+        .collect();
 
     HttpResponse::Ok().json(ids)
 }
 
 #[derive(Serialize)]
-struct FindImageResponse{
+struct FindImageResponse {
     id: i32,
-    url : String,
+    url: String,
 }

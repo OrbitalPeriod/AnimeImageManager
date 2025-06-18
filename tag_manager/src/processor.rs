@@ -39,7 +39,7 @@ pub async fn process_images(database: &(impl Database + Clone)) -> Result<()> {
                 }
             }
         })
-        .buffer_unordered(12)
+        .buffer_unordered(1)
         .collect::<Vec<_>>()
         .await;
     Ok(())
