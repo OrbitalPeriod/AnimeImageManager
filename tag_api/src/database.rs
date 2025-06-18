@@ -38,7 +38,7 @@ impl Database for SqlDatabase {
                 .map_err(|x| SqlDatabaseError::SqlxError(x))?
                 .ok_or(SqlDatabaseError::FileNotFound)?;
 
-        let path = self.path.join(format!("{}..png", test));
+        let path = self.path.join(format!("{}.png", test));
 
         Ok(path)
     }

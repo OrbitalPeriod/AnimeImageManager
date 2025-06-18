@@ -2,6 +2,7 @@ use std::{collections::HashMap, env, path::PathBuf, str::FromStr, time::Duration
 
 use crate::database::Database;
 mod database;
+use anyhow::{Ok, Result};
 use database::SqlDatabase;
 use dotenv::dotenv;
 use processor::process_images;
@@ -12,9 +13,12 @@ mod processor;
 mod tag_fetcher;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> !{
     dotenv().ok();
+
     let config = Config::create();
+    set_static_vars(&config);
+
     let database = SqlDatabase::create(&config).await.unwrap();
 
     loop {
@@ -23,13 +27,22 @@ async fn main() {
     }
 }
 
-#[derive(Clone)]
+fn set_static_vars(config : &Config){
+    image_path::STORAGE_PATH.set(config.storage_path.clone()).unwrap();
+    image_path::IMPORT_PATH.set(config.import_path.clone()).unwrap();
+    image_path::VIDEO_PATH.set(config.video_path.clone()).unwrap();
+    image_path::DISCARD_PATH.set(config.discarded_path.clone()).unwrap();
+}
+
+#[derive(Clone, Debug)]
 struct Config {
     connection_string: String,
     storage_path: PathBuf,
     import_path: PathBuf,
     discarded_path: PathBuf,
+    video_path: PathBuf,
 }
+
 impl Config {
     fn create() -> Config {
         let env: HashMap<String, String> = HashMap::from_iter(env::vars());
@@ -49,6 +62,11 @@ impl Config {
                 env.get("DISCARDED_DIR").map_or("/Images/Discard", |v| v),
             )
             .expect("Invalid discarded dir"),
+            video_path: PathBuf::from_str(
+                env.get("VIDEO_DIR")
+                    .map_or("/Images/Videos", |v| v),
+            )
+            .expect("Invalid other file type dir"),
         }
     }
 }

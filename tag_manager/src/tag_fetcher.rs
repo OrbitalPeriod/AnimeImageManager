@@ -1,9 +1,10 @@
 use std::io::Cursor;
 
+use anyhow::Result;
 use image::{DynamicImage, ImageOutputFormat};
 use reqwest::multipart;
 
-pub async fn fetch_tags(image: &DynamicImage) -> Result<Tags, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn fetch_tags(image: &DynamicImage) -> Result<Tags> {
     let mut buffer = Vec::new();
 
     image.write_to(&mut Cursor::new(&mut buffer), ImageOutputFormat::Png)?;

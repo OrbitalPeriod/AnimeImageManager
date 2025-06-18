@@ -1,11 +1,11 @@
-use sqlx::Error;
+use anyhow::Result;
 
 use crate::{tag_fetcher::{Rating, Tags}, Config};
 
 pub trait Database {
-    async fn create(config: &Config) -> Result<impl Database + Clone, Error>;
-    async fn save_image(&self, hash: &[u8;8], tags : &Tags) -> Result<u32, Error>;
-    async fn check_hash(&self, hash: &[u8;8]) -> Result<bool, Error>;
+    async fn create(config: &Config) -> Result<impl Database + Clone>;
+    async fn save_image(&self, hash: &[u8;8], tags : &Tags) -> Result<u32>;
+    async fn check_hash(&self, hash: &[u8;8]) -> Result<bool>;
     fn config(&self) -> &Config;
 }
 
@@ -16,14 +16,14 @@ pub struct SqlDatabase {
 }
 
 impl Database for SqlDatabase {
-    async fn create(config: &Config) -> Result<impl Database + Clone, Error> {
+    async fn create(config: &Config) -> Result<impl Database + Clone> {
         Ok(Self {
             pool: sqlx::postgres::PgPool::connect(&config.connection_string).await?,
             config: config.clone(),
         })
     }
 
-    async fn check_hash(&self, hash: &[u8;8]) -> Result<bool, Error> {
+    async fn check_hash(&self, hash: &[u8;8]) -> Result<bool> {
         let query: (bool,) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM image WHERE hash=$1)")
             .bind(hash)
             .fetch_one(&self.pool)
@@ -31,7 +31,7 @@ impl Database for SqlDatabase {
 
         Ok(query.0)
     }
-    async fn save_image(&self, hash: &[u8;8], tags: &Tags) -> Result<u32, Error>{
+    async fn save_image(&self, hash: &[u8;8], tags: &Tags) -> Result<u32>{
         let rec : (i32, ) = sqlx::query_as("INSERT INTO image (rating, hash) VALUES ($1, $2) RETURNING id")
             .bind(tags.rating.clone() as Rating)
             .bind(hash)
@@ -68,7 +68,7 @@ impl Database for SqlDatabase {
 }
 
 impl SqlDatabase{
-    async fn get_character_tag_id(&self, character_name: &str) -> Result<i32, Error>{
+    async fn get_character_tag_id(&self, character_name: &str) -> Result<i32>{
         let record = sqlx::query!(
             r#"
             WITH ins AS (
@@ -85,7 +85,7 @@ impl SqlDatabase{
 
         Ok(record.id.expect("what"))
     }
-    async fn get_general_tag_id(&self, tag: &str) -> Result<i32, Error>{
+    async fn get_general_tag_id(&self, tag: &str) -> Result<i32>{
         let record = sqlx::query!(
             r#"
             WITH ins AS (

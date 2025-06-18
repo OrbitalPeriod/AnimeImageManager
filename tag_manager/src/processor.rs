@@ -1,66 +1,88 @@
-use std::{error::Error, fs::DirEntry, path::PathBuf};
-
+use anyhow::{Result, anyhow};
 use futures::{StreamExt, stream};
-use image::DynamicImage;
-use uuid::Uuid;
+use std::path::PathBuf;
 
-use crate::{database::Database, image_path::ImagePath, tag_fetcher};
+use crate::{
+    database::Database,
+    image_path::{to_discarded, to_storage, to_video},
+    tag_fetcher,
+};
 
-pub async fn process_images(
-    database: &(impl Database + Clone),
-) -> Result<(), Box<dyn Error>> {
-    let files: Vec<_> = std::fs::read_dir(database.config().import_path.clone())
-        .unwrap()
-        .filter_map(Result::ok)
-        .collect();
+pub async fn process_images(database: &(impl Database + Clone)) -> Result<()> {
+    let files = get_image_paths(&database.config().import_path)?;
 
     stream::iter(files)
-        .map(|file| {
+        .map(|path| {
             let db = database.clone();
             async move {
-                match process_image(&db, &file).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => {
-                        println!(
-                            "Something went wrong processing file: {:?} with error: {:?}",
-                            file, e
-                        );
-                        let uid = Uuid::new_v4();
-                        let new_path = ImagePath::to_discarded(&db.config().discarded_path, uid);
-                        if let Err(e) = tokio::fs::rename(file.path(), new_path.path).await {
-                            println!("Could not move errored file: {}", e);
+                let extension = path
+                    .extension()
+                    .map(|x| x.to_str().unwrap())
+                    .unwrap_or("png");
+                if ["webm", "mov", "mp4", "flv", "avi"].contains(&extension) {
+                    process_video(&path, extension).await
+                } else {
+                    match process_image(&db, &path).await {
+                        Ok(_) => Ok(()),
+                        Err(e) => {
+                            println!(
+                                "Something went wrong processing file: {:?} with error: {:?}",
+                                path, e
+                            );
+                            let new_path = to_discarded();
+                            if let Err(e) = tokio::fs::rename(path, new_path).await {
+                                println!("Could not move errored file: {}", e);
+                            }
+                            Err::<(), _>(e)
                         }
-                        Err::<(), _>(e)
                     }
                 }
             }
         })
-        .buffer_unordered(12) // Limit concurrency to 4 tasks
-        .collect::<Vec<_>>() // Wait for all tasks to finish
+        .buffer_unordered(12)
+        .collect::<Vec<_>>()
         .await;
     Ok(())
 }
 
-async fn process_image(
-    database: &impl Database,
-    file: &DirEntry,
-) -> Result<u32, Box<dyn Error + Send + Sync>> {
-    let path = file.path();
+fn get_image_paths(import_path: &PathBuf) -> Result<Vec<PathBuf>> {
+    Ok(std::fs::read_dir(import_path)?
+        .filter_map(Result::ok)
+        .map(|x| x.path())
+        .collect())
+}
+
+async fn process_video(path: &PathBuf, extension: &str) -> Result<()> {
+    let new_path = to_video(extension);
+
+    tokio::fs::rename(path, new_path).await?;
+
+    Ok(())
+}
+
+async fn process_image(database: &impl Database, path: &PathBuf) -> Result<()> {
     let path_n = path.clone();
-    let image = tokio::task::spawn_blocking(move || image::io::Reader::open(&path_n).map(|ok| ok.with_guessed_format().map(|okk| okk.decode()))).await????;
+    let image = tokio::task::spawn_blocking(move || {
+        image::io::Reader::open(&path_n).map(|ok| ok.with_guessed_format().map(|okk| okk.decode()))
+    })
+    .await????;
     let hash: [u8; 8] = imagehash::average_hash(&image)
         .to_bytes()
         .try_into()
         .unwrap();
     let exists = database.check_hash(&hash).await?;
     if exists {
-        return Err("File duplicate".into());
+        return Err(anyhow!("File duplicate."));
     }
     let tags = tag_fetcher::fetch_tags(&image).await?;
     let id = database.save_image(&hash, &tags).await?;
 
-    let new_path = ImagePath::to_destination(&database.config().storage_path, id).path;
-    if let Err(e) = tokio::task::spawn_blocking(move || image.save_with_format(new_path, image::ImageFormat::Png)).await? {
+    let new_path = to_storage(id);
+    if let Err(e) = tokio::task::spawn_blocking(move || {
+        image.save_with_format(new_path, image::ImageFormat::Png)
+    })
+    .await?
+    {
         println!(
             "Error saving file!!! bad!!!!, remove {}, from db, {}",
             id, e
@@ -68,6 +90,5 @@ async fn process_image(
     }
 
     tokio::fs::remove_file(path).await?;
-    Ok(id)
+    Ok(())
 }
-
