@@ -1,8 +1,10 @@
-use std::io::Cursor;
+use std::{io::Cursor, sync::OnceLock};
 
 use anyhow::Result;
 use image::{DynamicImage, ImageOutputFormat};
 use reqwest::multipart;
+
+pub static TAGSERVICE_URL : OnceLock<String> = OnceLock::new();
 
 pub async fn fetch_tags(image: &DynamicImage) -> Result<Tags> {
     let mut buffer = Vec::new();

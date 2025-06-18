@@ -1978,6 +1978,7 @@ dependencies = [
  "anyhow",
  "dotenv",
  "serde",
+ "serde_json",
  "sqlx",
  "tokio",
 ]

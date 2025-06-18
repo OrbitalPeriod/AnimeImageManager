@@ -8,11 +8,13 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Build TagManager
 WORKDIR /build/tag_manager
 COPY tag_manager ./tag_manager
+COPY .env_docker ./tag_manager/.env
 RUN cd tag_manager && cargo build --release
 
 # Build TagApi
 WORKDIR /build/tag_api
 COPY tag_api ./tag_api
+COPY .env_docker ./tag_api/.env
 RUN cd tag_api && cargo build --release
 
 FROM python:3.11-slim

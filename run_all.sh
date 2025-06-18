@@ -9,7 +9,7 @@ done
 
 # Start TagService (FastAPI)
 cd /app/TagService
-fastapi dev main.py &
+fastapi run main.py &
 
 sleep 20s
 

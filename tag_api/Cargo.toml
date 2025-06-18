@@ -8,5 +8,6 @@ actix-web = "4.11.0"
 anyhow = "1.0.98"
 dotenv = "0.15.0"
 serde = { version = "1.0.219", features = ["derive"] }
-sqlx = { version = "0.8", features = [ "runtime-tokio", "tls-native-tls", "postgres", "uuid", "macros" ] }
+serde_json = "1.0.140"
+sqlx = { version = "0.8", features = [ "runtime-tokio", "tls-native-tls", "postgres", "uuid", "macros"] }
 tokio = { version = "1.45.1", features = ["full"] }

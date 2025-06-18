@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: tagmonolith
     env_file:
-      - .env
+      - .env_docker
     ports:
       - "8080:8080"
     volumes:

@@ -14,7 +14,7 @@ mod tag_fetcher;
 
 #[tokio::main]
 async fn main() -> !{
-    dotenv().ok();
+    let _ = dotenv();
 
     let config = Config::create();
     set_static_vars(&config);
@@ -32,6 +32,7 @@ fn set_static_vars(config : &Config){
     image_path::IMPORT_PATH.set(config.import_path.clone()).unwrap();
     image_path::VIDEO_PATH.set(config.video_path.clone()).unwrap();
     image_path::DISCARD_PATH.set(config.discarded_path.clone()).unwrap();
+    tag_fetcher::TAGSERVICE_URL.set(config.tagmanager_url.clone()).unwrap();
 }
 
 #[derive(Clone, Debug)]
@@ -41,6 +42,7 @@ struct Config {
     import_path: PathBuf,
     discarded_path: PathBuf,
     video_path: PathBuf,
+    tagmanager_url : String,
 }
 
 impl Config {
@@ -67,6 +69,7 @@ impl Config {
                     .map_or("/Images/Videos", |v| v),
             )
             .expect("Invalid other file type dir"),
+            tagmanager_url: std::env::var("TAGSERVICE_URL").unwrap_or("http://127.0.0.1:8000".to_string())
         }
     }
 }
