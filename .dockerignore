@@ -1,0 +1,50 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__
+*.pdb
+*.egg-info
+dist/
+build/
+eggs/
+*.egg
+*.log
+venv/
+#.env
+#.env_docker
+*.tox
+*.coverage
+*.hypothesis
+nosetests.xml
+coverage.xml
+*.cover
+*.unittest
+
+# Rust
+target/
+Cargo.lock
+Cargo.toml
+*.rs.bk
+
+# System-specific files
+.DS_Store
+Thumbs.db
+
+# IDE/editor-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+*.bak
+*.tmp
+
+# Docker-specific
+.dockerignore
+Dockerfile*
+docker-compose.override.yml
+
+# Logs
+*.log

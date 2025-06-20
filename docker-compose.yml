@@ -1,8 +1,6 @@
 services:
   tagmonolith:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: tagmonolith:latest
     container_name: tagmonolith
     env_file:
       - .env_docker

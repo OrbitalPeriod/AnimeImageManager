@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use crate::{
     database::Database,
     image_path::{to_discarded, to_storage, to_video},
-    tag_fetcher,
+    tag_fetcher::{self, ImageFetcherError},
 };
 
 pub async fn process_images(database: &(impl Database + Clone)) -> Result<()> {
@@ -25,13 +25,17 @@ pub async fn process_images(database: &(impl Database + Clone)) -> Result<()> {
                     match process_image(&db, &path).await {
                         Ok(_) => Ok(()),
                         Err(e) => {
-                            println!(
-                                "Something went wrong processing file: {:?} with error: {:?}",
-                                path, e
-                            );
-                            let new_path = to_discarded();
-                            if let Err(e) = tokio::fs::rename(path, new_path).await {
-                                println!("Could not move errored file: {}", e);
+                            if let Some(api_error) = e.downcast_ref::<ImageFetcherError>() {
+                                println!("API failure: {}", api_error);
+                            } else {
+                                println!(
+                                    "Something went wrong processing file: {:?} with error: {:?}",
+                                    path, e
+                                );
+                                let new_path = to_discarded();
+                                if let Err(e) = tokio::fs::rename(path, new_path).await {
+                                    println!("Could not move errored file: {}", e);
+                                }
                             }
                             Err::<(), _>(e)
                         }
@@ -39,7 +43,7 @@ pub async fn process_images(database: &(impl Database + Clone)) -> Result<()> {
                 }
             }
         })
-        .buffer_unordered(1)
+        .buffer_unordered(12)
         .collect::<Vec<_>>()
         .await;
     Ok(())

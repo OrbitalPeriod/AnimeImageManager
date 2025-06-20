@@ -2,7 +2,6 @@ use std::{collections::HashMap, env, path::PathBuf, str::FromStr, time::Duration
 
 use crate::database::Database;
 mod database;
-use anyhow::{Ok, Result};
 use database::SqlDatabase;
 use dotenv::dotenv;
 use processor::process_images;
@@ -26,6 +25,7 @@ async fn main() -> !{
         sleep(Duration::new(120, 0)).await;
     }
 }
+
 
 fn set_static_vars(config : &Config){
     image_path::STORAGE_PATH.set(config.storage_path.clone()).unwrap();
@@ -69,7 +69,7 @@ impl Config {
                     .map_or("/Images/Videos", |v| v),
             )
             .expect("Invalid other file type dir"),
-            tagmanager_url: std::env::var("TAGSERVICE_URL").unwrap_or("http://127.0.0.1:8000".to_string())
+            tagmanager_url: std::env::var("TAGSERVICE_URL").unwrap_or("http://127.0.0.1:8000".to_string()),
         }
     }
 }

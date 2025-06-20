@@ -7,19 +7,16 @@ for dir in /Images; do
     fi
 done
 
-# Start TagService (FastAPI)
 cd /app/TagService
-fastapi run main.py &
+uvicorn main:app --host 0.0.0.0 --port 8000 --log-level warning &
 
-sleep 20s
+cd /app/PixivDownloader
+python main.py &
 
-# Start TagManager
+sleep 30s
+
 /usr/local/bin/tag_manager &
 
-# Start TagApi
 /usr/local/bin/tag_api &
 
-
-
-# Wait for all to finish (block)
 wait

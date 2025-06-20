@@ -28,4 +28,3 @@ class TagData:
             general_tags=tags.general_tags,
             rating=tags.rating
         )
-

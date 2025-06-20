@@ -21,8 +21,13 @@ FROM python:3.11-slim
 
 # Setup Python service
 WORKDIR /app
-COPY TagService ./TagService
-COPY requirements.txt .
+COPY TagService/ ./TagService
+COPY TagService/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+WORKDIR /app 
+COPY PixivDownloader/ ./PixivDownloader 
+COPY PixivDownloader/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy Rust binaries
