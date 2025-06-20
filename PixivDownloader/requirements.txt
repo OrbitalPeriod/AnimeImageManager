@@ -1,0 +1,15 @@
+certifi==2025.6.15
+charset-normalizer==3.4.2
+cloudscraper==1.2.71
+greenlet==3.2.3
+idna==3.10
+pixivpy3==3.7.5
+psycopg2-binary==2.9.10
+pyparsing==3.2.3
+python-dotenv==1.1.0
+requests==2.32.4
+requests-toolbelt==1.0.0
+SQLAlchemy==2.0.41
+typing_extensions==4.14.0
+urllib3==2.5.0
+uuid==1.30
