@@ -35,7 +35,16 @@ impl<T: Serialize, E : Serialize> Responder for ApiResponse<T, E>{
     }
 }
 
-pub type FindImageResponse = Vec<Imagedata>;
+#[derive(Debug, Serialize)]
+pub struct FindImageResponse{
+    pub page: u32,
+    pub per_page: u32,
+    pub total_items : u32,
+    pub total_pages : u32,
+    pub items : Vec<Imagedata>,
+    pub next : String,
+    pub prev : String,
+}
 
 #[derive(Debug, Serialize)]
 pub struct Imagedata{

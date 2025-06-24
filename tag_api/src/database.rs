@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::OnceLock};
+use std::{fmt::Display, path::PathBuf, sync::OnceLock};
 
 use serde::Deserialize;
 
@@ -9,12 +9,14 @@ pub trait Database {
         auth_level: AuthLevel,
     ) -> Result<PathBuf, SqlDatabaseError>;
 
-    async fn get_filtered_images(
+    async fn get_filtered_images_paginated(
         &self,
         characters: Option<Vec<&str>>,
         tags: Option<Vec<&str>>,
-        rating : Option<Rating>
-    ) -> Result<Vec<Image>, sqlx::error::Error>;
+        rating: Option<Rating>,
+        per_page: u32,
+        page: u32,
+    ) -> Result<PaginatedResult<Image>, sqlx::error::Error>;
 
     async fn get_auth_level(&self, token: &str) -> Result<AuthLevel, SqlDatabaseError>;
 }
@@ -27,6 +29,12 @@ pub enum AuthLevel {
     User,
     PrivilegedUser,
     Admin,
+}
+
+pub struct PaginatedResult<T> {
+    pub items: Vec<T>,
+    pub total_items: u32,
+    pub total_pages: u32,
 }
 
 impl AuthLevel {
@@ -47,6 +55,12 @@ pub enum Rating {
     Sensitive,
     Questionable,
     Explicit,
+}
+
+impl Display for Rating {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -88,16 +102,18 @@ impl Database for SqlDatabase {
         }
     }
 
-    async fn get_filtered_images(
+    async fn get_filtered_images_paginated(
         &self,
         characters: Option<Vec<&str>>,
         tags: Option<Vec<&str>>,
-        rating : Option<Rating>,
-    ) -> Result<Vec<Image>, sqlx::error::Error> {
+        rating: Option<Rating>,
+        per_page: u32,
+        page: u32,
+    ) -> Result<PaginatedResult<Image>, sqlx::error::Error> {
         let tag_slice = tags.as_deref();
         let character_slice = characters.as_deref();
 
-        sqlx::query_as(
+        let images = sqlx::query_as(
             r#"
             SELECT i.*
             FROM image i
@@ -116,13 +132,53 @@ impl Database for SqlDatabase {
                 ($1 IS NULL OR COUNT(DISTINCT t.tag) = cardinality($1))
             AND
                 ($2 IS NULL OR COUNT(DISTINCT c.character) = cardinality($2))
+            LIMIT $4
+            OFFSET $5
             "#,
         )
         .bind(tag_slice)
         .bind(character_slice)
         .bind(rating)
+        .bind(per_page as i32)
+        .bind((page * per_page) as i32)
         .fetch_all(&self.pool)
-        .await
+        .await?;
+
+        let (count,): (i64,) = sqlx::query_as(
+            r#"
+    SELECT COUNT(*) FROM (
+        SELECT i.id
+        FROM image i
+        LEFT JOIN tag_images ti ON ti.image_id = i.id
+        LEFT JOIN tag t ON t.id = ti.tag_id
+        LEFT JOIN character_images ci ON ci.image_id = i.id
+        LEFT JOIN character c ON c.id = ci.character_id
+        WHERE 
+            ($1 IS NULL OR t.tag = ANY($1::text[]))
+        AND
+            ($2 IS NULL OR c.character = ANY($2::text[]))
+        AND 
+            ($3 IS NULL OR i.rating = $3)
+        GROUP BY i.id
+        HAVING
+            ($1 IS NULL OR COUNT(DISTINCT t.tag) = cardinality($1))
+        AND
+            ($2 IS NULL OR COUNT(DISTINCT c.character) = cardinality($2))
+    ) filtered
+    "#,
+        )
+        .bind(tag_slice)
+        .bind(character_slice)
+        .bind(rating)
+        .fetch_one(&self.pool)
+        .await?;
+        let total_items : u32 = count as u32;
+
+        Ok(PaginatedResult {
+            items: images,
+            total_items,
+            total_pages: total_items.div_ceil(per_page),
+        })
     }
 
     async fn get_auth_level(&self, token: &str) -> Result<AuthLevel, SqlDatabaseError> {

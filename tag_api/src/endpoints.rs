@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::{fmt::format, sync::OnceLock};
 
 use actix_web::{HttpResponse, Responder, get, http::header, web};
 use log::error;
@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub static IMAGE_URL_PREFIX: OnceLock<String> = OnceLock::new();
+pub static MAX_PER_PAGE: u32 = 400;
 
 #[get("/")]
 async fn root(_: web::Data<SqlDatabase>) -> impl Responder {
@@ -82,18 +83,34 @@ async fn image(
 struct FindImageRequest {
     characters: Option<String>,
     tags: Option<String>,
-    rating: Option<Rating>
+    rating: Option<Rating>,
+    page: Option<i32>,
+    per_page: Option<u32>,
 }
 
-#[get("/images")]
+#[get("/search")]
 async fn find_images(
     data: web::Data<SqlDatabase>,
     query: web::Query<FindImageRequest>,
 ) -> ApiResponse<FindImageResponse, &'static str> {
     let characters: Option<Vec<_>> = query.characters.as_ref().map(|x| x.split(',').collect());
     let tags: Option<Vec<_>> = query.tags.as_ref().map(|x| x.split(',').collect());
+    let page = query.page.unwrap_or(0) as u32;
+    let per_page = query
+        .per_page
+        .map(|x| {
+            if x <= MAX_PER_PAGE  {
+                x
+            } else {
+                MAX_PER_PAGE
+            }
+        })
+        .unwrap_or(MAX_PER_PAGE);
 
-    let ids = match data.get_filtered_images(characters, tags, query.rating).await {
+    let paged_result = match data
+        .get_filtered_images_paginated(characters, tags, query.rating, per_page, page)
+        .await
+    {
         Ok(ids) => ids,
         Err(e) => {
             error!("Error: {:?}", e);
@@ -101,7 +118,7 @@ async fn find_images(
         }
     };
 
-    let ids: Vec<_> = ids
+    let ids: Vec<_> = paged_result.items
         .iter()
         .map(|x| {
             Imagedata::new(
@@ -111,5 +128,55 @@ async fn find_images(
         })
         .collect();
 
-    ApiResponse::new_success(ids)
+    ApiResponse::new_success(FindImageResponse {
+        page,
+        per_page,
+        total_items: paged_result.total_items,
+        total_pages: paged_result.total_items.div_ceil(per_page),
+        items: ids,
+        next: format!(
+            "/search?page={}&per_page={}{}{}{}",
+            page + 1,
+            per_page,
+            query
+                .characters
+                .as_ref()
+                .map(|x| format!("&characters={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+            query
+                .tags
+                .as_ref()
+                .map(|x| format!("&tags={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+            query
+                .rating
+                .map(|x| format!("&rating={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+        ),
+        prev: format!(
+            "/search?page={}&per_page={}{}{}{}",
+            page.saturating_sub(1),
+            per_page,
+            query
+                .characters
+                .as_ref()
+                .map(|x| format!("&characters={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+            query
+                .tags
+                .as_ref()
+                .map(|x| format!("&tags={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+            query
+                .rating
+                .map(|x| format!("&rating={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+        ),
+    })
 }
