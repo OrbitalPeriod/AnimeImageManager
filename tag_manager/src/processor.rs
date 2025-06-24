@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use futures::{StreamExt, stream};
+use image::io::Limits;
 use std::path::PathBuf;
 
 use crate::{
@@ -67,7 +68,7 @@ async fn process_video(path: &PathBuf, extension: &str) -> Result<()> {
 async fn process_image(database: &impl Database, path: &PathBuf) -> Result<()> {
     let path_n = path.clone();
     let image = tokio::task::spawn_blocking(move || {
-        image::io::Reader::open(&path_n).map(|ok| ok.with_guessed_format().map(|okk| okk.decode()))
+        image::io::Reader::open(&path_n).map(|ok| ok.with_guessed_format().map(|mut okk| {okk.no_limits(); okk.decode()}))
     })
     .await????;
     let hash: [u8; 8] = imagehash::average_hash(&image)

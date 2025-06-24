@@ -1,10 +1,12 @@
 from fastapi import FastAPI, UploadFile, File
 from wdtagger import Tagger
 from PIL import Image
+import PIL.Image
 import io
 
 app = FastAPI()
 tagger = Tagger()
+PIL.Image.MAX_IMAGE_PIXELS = 106606278
 
 @app.post("/tag/")
 async def tag(file: UploadFile = File(...)):
