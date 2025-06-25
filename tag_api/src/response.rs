@@ -1,62 +1,82 @@
-use actix_web::{body::BoxBody, http::StatusCode, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, body::BoxBody, http::StatusCode};
 use serde::Serialize;
 use serde_json::json;
 
-pub struct ApiResponse<T : Serialize, E : Serialize>{
-    status : StatusCode,
-    data : Result<T, E>
+pub struct ApiResponse<T: Serialize, E: Serialize> {
+    status: StatusCode,
+    data: ApiData<T, E>,
 }
 
-impl<T: Serialize, E:Serialize> ApiResponse<T, E>{
-    pub fn new(status: StatusCode, data: Result<T, E>) -> Self{
-        Self{
-            status,
-            data,
-        }
+pub enum ApiData<T: Serialize, E: Serialize> {
+    Json(Result<T, E>),
+    Binary(Vec<u8>, String), // data, content_type
+}
+
+impl<T: Serialize, E: Serialize> ApiResponse<T, E> {
+    pub fn new(status: StatusCode, data: ApiData<T, E>) -> Self {
+        Self { status, data }
     }
-    pub fn new_internal_server_error(error: E) -> Self{
-        Self::new(StatusCode::from_u16(500).unwrap(), Err(error))
+    pub fn new_json(status: StatusCode, data: Result<T, E>) -> Self {
+        Self::new(status, ApiData::Json(data))
     }
-    pub fn new_success(data : T) -> Self{
-        Self::new(StatusCode::from_u16(200).unwrap(), Ok(data))
+    pub fn new_success(data: T) -> Self {
+        Self::new_json(StatusCode::from_u16(200).unwrap(), Ok(data))
+    }
+    pub fn new_internal_server_error(error: E) -> Self {
+        Self::new_json(StatusCode::from_u16(500).unwrap(), Err(error))
+    }
+    pub fn new_bad_request(error : E) -> Self{
+        Self::new_json(StatusCode::BAD_REQUEST, Err(error))
+    }
+    pub fn new_not_allowed(error : E) -> Self{
+        Self::new_json(StatusCode::METHOD_NOT_ALLOWED, Err(error))
+
+    }
+    pub fn new_binary(status: StatusCode, content: Vec<u8>, content_type: &str) -> Self {
+        Self::new(status, ApiData::Binary(content, content_type.to_string()))
     }
 }
 
-impl<T: Serialize, E : Serialize> Responder for ApiResponse<T, E>{
+impl<T: Serialize, E: Serialize> Responder for ApiResponse<T, E> {
     type Body = BoxBody;
 
     fn respond_to(self, _: &actix_web::HttpRequest) -> actix_web::HttpResponse<Self::Body> {
-        let body = match self.data{
-            Ok(value) => json!({"status": "success", "data": value}),
-            Err(error_message) => json!({"status": "error", "error": error_message}),
-        };
-
-        HttpResponse::build(self.status).content_type("application/json").body(body.to_string())
+        match self.data {
+            ApiData::Json(result) => {
+                let body = match result {
+                    Ok(value) => json!({"status": "success", "data": value}),
+                    Err(error_message) => json!({"status": "error", "error": error_message}),
+                };
+                HttpResponse::build(self.status)
+                    .content_type("application/json")
+                    .body(body.to_string())
+            }
+            ApiData::Binary(content, content_type) => HttpResponse::build(self.status)
+                .content_type(content_type)
+                .body(content),
+        }
     }
 }
 
 #[derive(Debug, Serialize)]
-pub struct FindImageResponse{
+pub struct FindImageResponse {
     pub page: u32,
     pub per_page: u32,
-    pub total_items : u32,
-    pub total_pages : u32,
-    pub items : Vec<Imagedata>,
-    pub next : String,
-    pub prev : String,
+    pub total_items: u32,
+    pub total_pages: u32,
+    pub items: Vec<Imagedata>,
+    pub next: String,
+    pub prev: String,
 }
 
 #[derive(Debug, Serialize)]
-pub struct Imagedata{
+pub struct Imagedata {
     id: i32,
     url: String,
 }
 
-impl Imagedata{
-    pub fn new(id: i32, url: String) -> Self{
-        Self{
-            id,
-            url
-        }
+impl Imagedata {
+    pub fn new(id: i32, url: String) -> Self {
+        Self { id, url }
     }
 }

@@ -1,9 +1,12 @@
 use std::{fmt::format, sync::OnceLock};
 
-use actix_web::{HttpResponse, Responder, get, http::header, web};
+use actix_web::{
+    get,
+    http::{StatusCode, header},
+    web,
+};
 use log::error;
 use serde::Deserialize;
-use sqlx::query;
 use tokio::io::AsyncReadExt;
 
 use crate::{
@@ -15,8 +18,8 @@ pub static IMAGE_URL_PREFIX: OnceLock<String> = OnceLock::new();
 pub static MAX_PER_PAGE: u32 = 400;
 
 #[get("/")]
-async fn root(_: web::Data<SqlDatabase>) -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
+async fn root(_: web::Data<SqlDatabase>) -> ApiResponse<&'static str, ()> {
+    ApiResponse::new_success("Site up and working")
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,7 +32,7 @@ async fn image(
     data: web::Data<SqlDatabase>,
     id: web::Path<u32>,
     query: web::Query<ImageRequest>,
-) -> impl Responder {
+) -> ApiResponse<(), &'static str> {
     let id = id.into_inner();
     let level = if let Some(token) = &query.token {
         match data.get_auth_level(token).await {
@@ -48,14 +51,14 @@ async fn image(
     let path = match data.get_image_location(id, level).await {
         Ok(path) => path,
         Err(SqlDatabaseError::NotFound) => {
-            return HttpResponse::BadRequest().body("Incorrect image id");
+            return ApiResponse::new_bad_request("Incorrect image id");
         }
         Err(SqlDatabaseError::NotAllowed) => {
-            return HttpResponse::MethodNotAllowed().body("Not correct permissions for this image");
+            return ApiResponse::new_not_allowed("Not correct permissions for this image");
         }
         Err(e) => {
             error!("sqlx error: {:?}", e);
-            return HttpResponse::InternalServerError().body("Internal server error");
+            return ApiResponse::new_internal_server_error("Internal server error");
         }
     };
 
@@ -63,7 +66,7 @@ async fn image(
         Ok(file) => file,
         Err(e) => {
             error!("Error opening file: {:?}", e);
-            return HttpResponse::InternalServerError().body("InternalServerError");
+            return ApiResponse::new_internal_server_error("Internal server error");
         }
     };
 
@@ -71,12 +74,10 @@ async fn image(
 
     if let Err(e) = file.read_to_end(&mut buffer).await {
         error!("Error reading file: {:?}", e);
-        return HttpResponse::InternalServerError().body("nooo");
+        return ApiResponse::new_internal_server_error("Internal server error");
     }
 
-    HttpResponse::Ok()
-        .insert_header((header::CONTENT_TYPE, "image/png"))
-        .body(buffer)
+    ApiResponse::new_binary(StatusCode::OK, buffer, "image/png")
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,6 +87,7 @@ struct FindImageRequest {
     rating: Option<Rating>,
     page: Option<i32>,
     per_page: Option<u32>,
+    token: Option<String>,
 }
 
 #[get("/search")]
@@ -98,13 +100,7 @@ async fn find_images(
     let page = query.page.unwrap_or(0) as u32;
     let per_page = query
         .per_page
-        .map(|x| {
-            if x <= MAX_PER_PAGE  {
-                x
-            } else {
-                MAX_PER_PAGE
-            }
-        })
+        .map(|x| if x <= MAX_PER_PAGE { x } else { MAX_PER_PAGE })
         .unwrap_or(MAX_PER_PAGE);
 
     let paged_result = match data
@@ -118,12 +114,23 @@ async fn find_images(
         }
     };
 
-    let ids: Vec<_> = paged_result.items
+    let ids: Vec<_> = paged_result
+        .items
         .iter()
         .map(|x| {
             Imagedata::new(
                 x.id,
-                format!("{}/{}", IMAGE_URL_PREFIX.get().unwrap(), x.id),
+                format!(
+                    "{}/{}{}",
+                    IMAGE_URL_PREFIX.get().unwrap(),
+                    x.id,
+                    query
+                        .token
+                        .as_ref()
+                        .map(|x| format!("?token={}", x))
+                        .as_ref()
+                        .map_or("", |v| v)
+                ),
             )
         })
         .collect();
@@ -135,7 +142,7 @@ async fn find_images(
         total_pages: paged_result.total_items.div_ceil(per_page),
         items: ids,
         next: format!(
-            "/search?page={}&per_page={}{}{}{}",
+            "/search?page={}&per_page={}{}{}{}{}",
             page + 1,
             per_page,
             query
@@ -155,9 +162,15 @@ async fn find_images(
                 .map(|x| format!("&rating={}", x))
                 .as_ref()
                 .map_or("", |v| v),
+            query
+                .token
+                .as_ref()
+                .map(|x| format!("&token={}", x))
+                .as_ref()
+                .map_or("", |v| v)
         ),
         prev: format!(
-            "/search?page={}&per_page={}{}{}{}",
+            "/search?page={}&per_page={}{}{}{}{}",
             page.saturating_sub(1),
             per_page,
             query
@@ -177,6 +190,12 @@ async fn find_images(
                 .map(|x| format!("&rating={}", x))
                 .as_ref()
                 .map_or("", |v| v),
+            query
+                .token
+                .as_ref()
+                .map(|x| format!("&token={}", x))
+                .as_ref()
+                .map_or("", |v| v)
         ),
     })
 }

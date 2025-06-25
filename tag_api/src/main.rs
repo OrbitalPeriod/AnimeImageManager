@@ -40,6 +40,7 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
+
 #[derive(Clone, Debug)]
 struct Config {
     address: String,
