@@ -11,6 +11,8 @@ use log::info;
 
 mod endpoints;
 mod response;
+mod requests;
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {

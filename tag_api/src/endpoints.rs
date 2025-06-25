@@ -1,17 +1,15 @@
-use std::{fmt::format, sync::OnceLock};
+use std::sync::OnceLock;
 
 use actix_web::{
     get,
-    http::{StatusCode, header},
+    http::{StatusCode},
     web,
 };
 use log::error;
-use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 
 use crate::{
-    database::{Database, Rating, SqlDatabase, SqlDatabaseError},
-    response::{ApiResponse, FindImageResponse, Imagedata},
+    database::{Database, SqlDatabase, SqlDatabaseError}, requests::{FindImageRequest, ImageRequest}, response::{ApiResponse, FindImageResponse, Imagedata}
 };
 
 pub static IMAGE_URL_PREFIX: OnceLock<String> = OnceLock::new();
@@ -22,10 +20,6 @@ async fn root(_: web::Data<SqlDatabase>) -> ApiResponse<&'static str, ()> {
     ApiResponse::new_success("Site up and working")
 }
 
-#[derive(Debug, Deserialize)]
-struct ImageRequest {
-    token: Option<String>,
-}
 
 #[get("/image/{id}")]
 async fn image(
@@ -80,15 +74,6 @@ async fn image(
     ApiResponse::new_binary(StatusCode::OK, buffer, "image/png")
 }
 
-#[derive(Debug, Deserialize)]
-struct FindImageRequest {
-    characters: Option<String>,
-    tags: Option<String>,
-    rating: Option<Rating>,
-    page: Option<i32>,
-    per_page: Option<u32>,
-    token: Option<String>,
-}
 
 #[get("/search")]
 async fn find_images(
