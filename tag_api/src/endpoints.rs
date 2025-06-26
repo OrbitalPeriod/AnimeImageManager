@@ -1,15 +1,13 @@
 use std::sync::OnceLock;
 
-use actix_web::{
-    get,
-    http::{StatusCode},
-    web,
-};
+use actix_web::{get, http::StatusCode, web};
 use log::error;
 use tokio::io::AsyncReadExt;
 
 use crate::{
-    database::{Database, SqlDatabase, SqlDatabaseError}, requests::{FindImageRequest, ImageRequest}, response::{ApiResponse, FindImageResponse, Imagedata}
+    database::{Database, SqlDatabase, SqlDatabaseError},
+    requests::{FindImageRequest, ImageRequest},
+    response::{ApiResponse, FindImageResponse, Imagedata, SearchTagResult, TagData},
 };
 
 pub static IMAGE_URL_PREFIX: OnceLock<String> = OnceLock::new();
@@ -19,7 +17,6 @@ pub static MAX_PER_PAGE: u32 = 400;
 async fn root(_: web::Data<SqlDatabase>) -> ApiResponse<&'static str, ()> {
     ApiResponse::new_success("Site up and working")
 }
-
 
 #[get("/image/{id}")]
 async fn image(
@@ -73,7 +70,6 @@ async fn image(
 
     ApiResponse::new_binary(StatusCode::OK, buffer, "image/png")
 }
-
 
 #[get("/search")]
 async fn find_images(
@@ -182,5 +178,34 @@ async fn find_images(
                 .as_ref()
                 .map_or("", |v| v)
         ),
+    })
+}
+
+#[get("/tags/{tag}")]
+pub async fn search_tags(data: web::Data<SqlDatabase>, tag : web::Path<String>) -> ApiResponse<SearchTagResult, &'static str> {
+    let page = 0u32;
+    let per_page = 200u32;
+
+    let tags = match data.get_filtered_tags_paginated(&tag, per_page, page).await{
+        Ok(tags) => tags,
+        Err(e) => {
+            error!("Sqlx error: {}", e);
+            return ApiResponse::new_internal_server_error("Pain");
+        }
+    };
+
+    let items = tags.items.iter().map(|(name, count)| TagData{
+        name: name.to_string(),
+        count: *count
+    }).collect();
+
+    ApiResponse::new_success(SearchTagResult{
+        page: 0,
+        per_page: 200,
+        total_items: 69,
+        items,
+        total_pages: 69,
+        next: format!("/tags/{}?per_page={}&page={}", tag, per_page, page+1),
+        prev: format!("/tags/{}?per_page={}&page={}", tag, per_page, page.saturating_sub(1))
     })
 }

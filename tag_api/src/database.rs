@@ -19,6 +19,12 @@ pub trait Database {
     ) -> Result<PaginatedResult<Image>, sqlx::error::Error>;
 
     async fn get_auth_level(&self, token: &str) -> Result<AuthLevel, SqlDatabaseError>;
+    async fn get_filtered_tags_paginated(
+        &self,
+        tag: &str,
+        per_page: u32,
+        page: u32,
+    ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error>;
 }
 
 #[derive(Debug, Clone, Copy, sqlx::Type, PartialEq, Eq)]
@@ -172,10 +178,55 @@ impl Database for SqlDatabase {
         .bind(rating)
         .fetch_one(&self.pool)
         .await?;
-        let total_items : u32 = count as u32;
+        let total_items: u32 = count as u32;
 
         Ok(PaginatedResult {
             items: images,
+            total_items,
+            total_pages: total_items.div_ceil(per_page),
+        })
+    }
+
+    async fn get_filtered_tags_paginated(
+        &self,
+        tag: &str,
+        per_page: u32,
+        page: u32,
+    ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error> {
+        let like_pattern = format!("%{}%", tag);
+        let tags = sqlx::query!(
+            r#"
+            SELECT tag, COUNT(*) as count
+            FROM tag_images
+            JOIN public.tag t on tag_images.tag_id = t.id
+            WHERE t.tag LIKE $1
+            GROUP BY t.tag
+            ORDER BY COUNT(*) DESC
+            LIMIT $2 
+            OFFSET $3;
+            "#,
+            like_pattern,
+            per_page as i64,
+            page as i64
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let tags = tags.iter().map(|x| (x.tag.clone(), x.count.unwrap() as u32)).collect();
+
+        let total_items = sqlx::query_scalar!(
+            r#"
+            SELECT count(*)
+            FROM tag
+            WHERE tag LIKE $1
+            "#,
+            like_pattern
+        )
+        .fetch_one(&self.pool)
+        .await?.unwrap() as u32;
+
+        Ok(PaginatedResult {
+            items: tags,
             total_items,
             total_pages: total_items.div_ceil(per_page),
         })

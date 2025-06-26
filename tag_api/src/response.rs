@@ -80,3 +80,20 @@ impl Imagedata {
         Self { id, url }
     }
 }
+
+#[derive(Debug, Serialize)]
+pub struct SearchTagResult{
+    pub page : u32,
+    pub per_page: u32,
+    pub total_items: u32,
+    pub total_pages: u32,
+    pub items: Vec<TagData>,
+    pub next : String,
+    pub prev : String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TagData{
+    pub name : String,
+    pub count: u32,
+}

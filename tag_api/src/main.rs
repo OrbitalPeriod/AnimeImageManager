@@ -3,7 +3,7 @@ use std::str::FromStr;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use database::SqlDatabase;
 use dotenv::dotenv;
-use endpoints::{find_images, image, root};
+use endpoints::{find_images, image, root, search_tags};
 mod database;
 use anyhow::Result;
 use env_logger::Env;
@@ -36,6 +36,7 @@ async fn main() -> std::io::Result<()> {
             .service(root)
             .service(find_images)
             .service(image)
+            .service(search_tags)
     })
     .bind(address)?
     .run()
