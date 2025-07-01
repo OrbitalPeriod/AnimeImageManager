@@ -25,6 +25,12 @@ pub trait Database {
         per_page: u32,
         page: u32,
     ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error>;
+    async fn get_filtered_characters_paginated(
+        &self,
+        character: Option<&str>,
+        per_page: u32,
+        page: u32,
+    ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error>;
 }
 
 #[derive(Debug, Clone, Copy, sqlx::Type, PartialEq, Eq)]
@@ -244,6 +250,52 @@ impl Database for SqlDatabase {
         .ok_or(SqlDatabaseError::NotFound)?;
 
         Ok(t.level)
+    }
+    async fn get_filtered_characters_paginated(
+            &self,
+            character: Option<&str>,
+            per_page: u32,
+            page: u32,
+        ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error> {
+        let character = character.unwrap_or("");
+        let like_pattern = format!("%{}%", character);
+        let tags = sqlx::query!(
+            r#"
+            SELECT character, COUNT(*) as count
+            FROM character_images
+            JOIN public.character t on character_images.character_id = t.id
+            WHERE t.character LIKE $1
+            GROUP BY t.character
+            ORDER BY COUNT(*) DESC
+            LIMIT $2 
+            OFFSET $3;
+            "#,
+            like_pattern,
+            per_page as i64,
+            (page * per_page) as i64
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let tags = tags.iter().map(|x| (x.character.clone(), x.count.unwrap() as u32)).collect();
+
+        let total_items = sqlx::query_scalar!(
+            r#"
+            SELECT count(*)
+            FROM tag
+            WHERE tag LIKE $1
+            "#,
+            like_pattern
+        )
+        .fetch_one(&self.pool)
+        .await?.unwrap() as u32;
+
+        Ok(PaginatedResult {
+            items: tags,
+            total_items,
+            total_pages: total_items.div_ceil(per_page),
+        })
+
     }
 }
 

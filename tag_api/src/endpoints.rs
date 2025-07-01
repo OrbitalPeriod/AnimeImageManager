@@ -10,9 +10,9 @@ use tokio::io::AsyncReadExt;
 
 use crate::{
     database::{Database, SqlDatabase, SqlDatabaseError},
-    requests::{FindImageRequest, FindTagQuery, ImageRequest},
+    requests::{FindCharacterQuery, FindImageRequest, FindTagQuery, ImageRequest},
     response::{
-        ApiResponse, Imagedata, PaginatedResponse, TagData,
+        ApiResponse, CharacterData, Imagedata, PaginatedResponse, TagData
     },
 };
 
@@ -157,12 +157,12 @@ async fn find_images(
     ))
 }
 
-#[get("/tags")]
+#[get("/tag")]
 pub async fn search_tags(
     data: web::Data<SqlDatabase>,
     query: web::Query<FindTagQuery>,
 ) -> ApiResponse<PaginatedResponse<TagData>, &'static str> {
-    let page = dbg!(query.pages.page.unwrap_or(0));
+    let page = query.pages.page.unwrap_or(0);
     let per_page = query
         .pages
         .per_page
@@ -192,6 +192,52 @@ pub async fn search_tags(
             "/tags?{}",
             query
                 .tag
+                .as_ref()
+                .map(|x| format!("&tag={}", x))
+                .as_ref()
+                .map_or("", |x| x)
+        ),
+        page,
+        per_page,
+        tags.total_items,
+    ))
+}
+
+#[get("/character")]
+pub async fn search_characters(
+    data: web::Data<SqlDatabase>,
+    query: web::Query<FindCharacterQuery>,
+) -> ApiResponse<PaginatedResponse<CharacterData>, &'static str> {
+    let page = query.pages.page.unwrap_or(0);
+    let per_page = query
+        .pages
+        .per_page
+        .map(|x| if x <= MAX_PER_PAGE { x } else { MAX_PER_PAGE })
+        .unwrap_or(MAX_PER_PAGE);
+
+    let tags = match data.get_filtered_characters_paginated(query.character.as_deref(), per_page, page).await {
+        Ok(tags) => tags,
+        Err(e) => {
+            error!("Sqlx error: {}", e);
+            return ApiResponse::new_internal_server_error("Pain");
+        }
+    };
+
+    let items = tags
+        .items
+        .iter()
+        .map(|(name, count)| CharacterData {
+            name: name.to_string(),
+            count: *count,
+        })
+        .collect();
+
+    ApiResponse::new_success(PaginatedResponse::new(
+        items,
+        &format!(
+            "/tags?{}",
+            query
+                .character
                 .as_ref()
                 .map(|x| format!("&tag={}", x))
                 .as_ref()

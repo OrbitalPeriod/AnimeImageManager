@@ -48,3 +48,10 @@ pub struct FindTagQuery {
     #[serde(flatten)]
     pub pages: Paginated,
 }
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct FindCharacterQuery{
+    pub character: Option<String>,
+    #[serde(flatten)]
+    pub pages: Paginated,
+}

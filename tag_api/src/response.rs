@@ -127,3 +127,9 @@ pub struct TagData {
     pub name: String,
     pub count: u32,
 }
+
+#[derive(Debug, Serialize)]
+pub struct CharacterData{
+    pub name: String,
+    pub count: u32
+}
