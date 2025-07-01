@@ -82,8 +82,8 @@ async fn find_images(
     data: web::Data<SqlDatabase>,
     query: web::Query<FindImageRequest>,
 ) -> ApiResponse<PaginatedResponse<Imagedata>, &'static str> {
-    let characters: Option<Vec<_>> = query.characters.as_ref().map(|x| x.split(',').collect());
-    let tags: Option<Vec<_>> = query.tags.as_ref().map(|x| x.split(',').collect());
+    let characters: Option<Vec<_>> = query.characters.as_ref().and_then(|x| if x.is_empty() {None} else {Some(x)}).map(|x| x.split(',').collect());
+    let tags: Option<Vec<_>> = query.tags.as_ref().and_then(|x| if x.is_empty() {None} else {Some(x)}).map(|x| x.split(',').collect());
     let page = query.pages.page.unwrap_or(0);
     let per_page = query
         .pages

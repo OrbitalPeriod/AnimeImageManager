@@ -43,10 +43,10 @@ impl<T: Serialize, E: Serialize> Responder for ApiResponse<T, E> {
 
     fn respond_to(self, _: &actix_web::HttpRequest) -> actix_web::HttpResponse<Self::Body> {
         match self.data {
-            ApiData::Json(result) => {
+            ApiData::Json(ref result) => {
                 let body = match result {
-                    Ok(value) => json!({"status": "success", "data": value}),
-                    Err(error_message) => json!({"status": "error", "error": error_message}),
+                    Ok(_) => json!({"status": self.status.as_u16() , "data": result}),
+                    Err(_) => json!({"status": self.status.as_u16(), "data": result}),
                 };
                 HttpResponse::build(self.status)
                     .content_type("application/json")
