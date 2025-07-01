@@ -21,7 +21,7 @@ pub trait Database {
     async fn get_auth_level(&self, token: &str) -> Result<AuthLevel, SqlDatabaseError>;
     async fn get_filtered_tags_paginated(
         &self,
-        tag: &str,
+        tag: Option<&str>,
         per_page: u32,
         page: u32,
     ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error>;
@@ -189,10 +189,11 @@ impl Database for SqlDatabase {
 
     async fn get_filtered_tags_paginated(
         &self,
-        tag: &str,
+        tag: Option<&str>,
         per_page: u32,
         page: u32,
     ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error> {
+        let tag = tag.unwrap_or("");
         let like_pattern = format!("%{}%", tag);
         let tags = sqlx::query!(
             r#"
@@ -207,7 +208,7 @@ impl Database for SqlDatabase {
             "#,
             like_pattern,
             per_page as i64,
-            page as i64
+            (page * per_page) as i64
         )
         .fetch_all(&self.pool)
         .await?;

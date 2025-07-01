@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use actix_web::{HttpResponse, Responder, body::BoxBody, http::StatusCode};
 use serde::Serialize;
 use serde_json::json;
@@ -25,12 +27,11 @@ impl<T: Serialize, E: Serialize> ApiResponse<T, E> {
     pub fn new_internal_server_error(error: E) -> Self {
         Self::new_json(StatusCode::from_u16(500).unwrap(), Err(error))
     }
-    pub fn new_bad_request(error : E) -> Self{
+    pub fn new_bad_request(error: E) -> Self {
         Self::new_json(StatusCode::BAD_REQUEST, Err(error))
     }
-    pub fn new_not_allowed(error : E) -> Self{
+    pub fn new_not_allowed(error: E) -> Self {
         Self::new_json(StatusCode::METHOD_NOT_ALLOWED, Err(error))
-
     }
     pub fn new_binary(status: StatusCode, content: Vec<u8>, content_type: &str) -> Self {
         Self::new(status, ApiData::Binary(content, content_type.to_string()))
@@ -59,14 +60,54 @@ impl<T: Serialize, E: Serialize> Responder for ApiResponse<T, E> {
 }
 
 #[derive(Debug, Serialize)]
-pub struct FindImageResponse {
+pub struct PaginatedResponse<T> {
+    pub items: Vec<T>,
+    #[serde(flatten)]
+    pub pages: Paginated,
+}
+
+impl<T> PaginatedResponse<T> {
+    pub fn new(items: Vec<T>, prefix: &str, page: u32, per_page: u32, total_items: u32) -> Self {
+        Self {
+            items,
+            pages: Paginated::new(prefix, page, per_page, total_items),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct Paginated {
     pub page: u32,
     pub per_page: u32,
     pub total_items: u32,
     pub total_pages: u32,
-    pub items: Vec<Imagedata>,
     pub next: String,
     pub prev: String,
+}
+
+impl Paginated {
+    fn new(prefix: &str, page: u32, per_page: u32, total_items: u32) -> Self {
+        let total_pages = total_items.div_ceil(per_page);
+        Self {
+            page,
+            per_page,
+            total_pages,
+            total_items,
+            next: format!(
+                "{}&page={}&per_page={}",
+                prefix,
+                {
+                    if page >= total_pages {
+                        total_pages
+                    } else {
+                        page + 1
+                    }
+                },
+                per_page
+            ),
+            prev: format!("{}&page={}&per_page={}", prefix, page.saturating_sub(1), per_page),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -82,18 +123,7 @@ impl Imagedata {
 }
 
 #[derive(Debug, Serialize)]
-pub struct SearchTagResult{
-    pub page : u32,
-    pub per_page: u32,
-    pub total_items: u32,
-    pub total_pages: u32,
-    pub items: Vec<TagData>,
-    pub next : String,
-    pub prev : String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TagData{
-    pub name : String,
+pub struct TagData {
+    pub name: String,
     pub count: u32,
 }

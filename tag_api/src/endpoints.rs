@@ -1,13 +1,19 @@
-use std::sync::OnceLock;
+use std::{fmt::format, sync::OnceLock};
 
-use actix_web::{get, http::StatusCode, web};
+use actix_web::{
+    get,
+    http::StatusCode,
+    web::{self},
+};
 use log::error;
 use tokio::io::AsyncReadExt;
 
 use crate::{
     database::{Database, SqlDatabase, SqlDatabaseError},
-    requests::{FindImageRequest, ImageRequest},
-    response::{ApiResponse, FindImageResponse, Imagedata, SearchTagResult, TagData},
+    requests::{FindImageRequest, FindTagQuery, ImageRequest},
+    response::{
+        ApiResponse, Imagedata, PaginatedResponse, TagData,
+    },
 };
 
 pub static IMAGE_URL_PREFIX: OnceLock<String> = OnceLock::new();
@@ -75,11 +81,12 @@ async fn image(
 async fn find_images(
     data: web::Data<SqlDatabase>,
     query: web::Query<FindImageRequest>,
-) -> ApiResponse<FindImageResponse, &'static str> {
+) -> ApiResponse<PaginatedResponse<Imagedata>, &'static str> {
     let characters: Option<Vec<_>> = query.characters.as_ref().map(|x| x.split(',').collect());
     let tags: Option<Vec<_>> = query.tags.as_ref().map(|x| x.split(',').collect());
-    let page = query.page.unwrap_or(0) as u32;
+    let page = query.pages.page.unwrap_or(0);
     let per_page = query
+        .pages
         .per_page
         .map(|x| if x <= MAX_PER_PAGE { x } else { MAX_PER_PAGE })
         .unwrap_or(MAX_PER_PAGE);
@@ -116,77 +123,53 @@ async fn find_images(
         })
         .collect();
 
-    ApiResponse::new_success(FindImageResponse {
+    ApiResponse::new_success(PaginatedResponse::new(
+        ids,
+        &format!(
+            "/search?{}{}{}{}",
+            query
+                .characters
+                .as_ref()
+                .map(|x| format!("&characters={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+            query
+                .tags
+                .as_ref()
+                .map(|x| format!("&tags={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+            query
+                .rating
+                .map(|x| format!("&rating={}", x))
+                .as_ref()
+                .map_or("", |v| v),
+            query
+                .token
+                .as_ref()
+                .map(|x| format!("&token={}", x))
+                .as_ref()
+                .map_or("", |v| v)
+        ),
         page,
         per_page,
-        total_items: paged_result.total_items,
-        total_pages: paged_result.total_items.div_ceil(per_page),
-        items: ids,
-        next: format!(
-            "/search?page={}&per_page={}{}{}{}{}",
-            page + 1,
-            per_page,
-            query
-                .characters
-                .as_ref()
-                .map(|x| format!("&characters={}", x))
-                .as_ref()
-                .map_or("", |v| v),
-            query
-                .tags
-                .as_ref()
-                .map(|x| format!("&tags={}", x))
-                .as_ref()
-                .map_or("", |v| v),
-            query
-                .rating
-                .map(|x| format!("&rating={}", x))
-                .as_ref()
-                .map_or("", |v| v),
-            query
-                .token
-                .as_ref()
-                .map(|x| format!("&token={}", x))
-                .as_ref()
-                .map_or("", |v| v)
-        ),
-        prev: format!(
-            "/search?page={}&per_page={}{}{}{}{}",
-            page.saturating_sub(1),
-            per_page,
-            query
-                .characters
-                .as_ref()
-                .map(|x| format!("&characters={}", x))
-                .as_ref()
-                .map_or("", |v| v),
-            query
-                .tags
-                .as_ref()
-                .map(|x| format!("&tags={}", x))
-                .as_ref()
-                .map_or("", |v| v),
-            query
-                .rating
-                .map(|x| format!("&rating={}", x))
-                .as_ref()
-                .map_or("", |v| v),
-            query
-                .token
-                .as_ref()
-                .map(|x| format!("&token={}", x))
-                .as_ref()
-                .map_or("", |v| v)
-        ),
-    })
+        paged_result.total_items,
+    ))
 }
 
-#[get("/tags/{tag}")]
-pub async fn search_tags(data: web::Data<SqlDatabase>, tag : web::Path<String>) -> ApiResponse<SearchTagResult, &'static str> {
-    let page = 0u32;
-    let per_page = 200u32;
+#[get("/tags")]
+pub async fn search_tags(
+    data: web::Data<SqlDatabase>,
+    query: web::Query<FindTagQuery>,
+) -> ApiResponse<PaginatedResponse<TagData>, &'static str> {
+    let page = dbg!(query.pages.page.unwrap_or(0));
+    let per_page = query
+        .pages
+        .per_page
+        .map(|x| if x <= MAX_PER_PAGE { x } else { MAX_PER_PAGE })
+        .unwrap_or(MAX_PER_PAGE);
 
-    let tags = match data.get_filtered_tags_paginated(&tag, per_page, page).await{
+    let tags = match data.get_filtered_tags_paginated(query.tag.as_deref(), per_page, page).await {
         Ok(tags) => tags,
         Err(e) => {
             error!("Sqlx error: {}", e);
@@ -194,18 +177,28 @@ pub async fn search_tags(data: web::Data<SqlDatabase>, tag : web::Path<String>) 
         }
     };
 
-    let items = tags.items.iter().map(|(name, count)| TagData{
-        name: name.to_string(),
-        count: *count
-    }).collect();
+    let items = tags
+        .items
+        .iter()
+        .map(|(name, count)| TagData {
+            name: name.to_string(),
+            count: *count,
+        })
+        .collect();
 
-    ApiResponse::new_success(SearchTagResult{
-        page: 0,
-        per_page: 200,
-        total_items: 69,
+    ApiResponse::new_success(PaginatedResponse::new(
         items,
-        total_pages: 69,
-        next: format!("/tags/{}?per_page={}&page={}", tag, per_page, page+1),
-        prev: format!("/tags/{}?per_page={}&page={}", tag, per_page, page.saturating_sub(1))
-    })
+        &format!(
+            "/tags?{}",
+            query
+                .tag
+                .as_ref()
+                .map(|x| format!("&tag={}", x))
+                .as_ref()
+                .map_or("", |x| x)
+        ),
+        page,
+        per_page,
+        tags.total_items,
+    ))
 }
