@@ -19,6 +19,10 @@ RUN cd tag_api && cargo build --release
 
 FROM python:3.11-slim
 
+RUN apt-get update && apt-get install -y curl build-essential pkg-config libssl-dev && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Setup Python service
 WORKDIR /app
 COPY TagService/ ./TagService
@@ -33,6 +37,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy Rust binaries
 COPY --from=base /build/tag_manager/tag_manager/target/release/tag_manager /usr/local/bin/
 COPY --from=base /build/tag_api/tag_api/target/release/tag_api /usr/local/bin/
+
 
 # Add entrypoint script
 COPY run_all.sh /run_all.sh

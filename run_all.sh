@@ -13,10 +13,11 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --log-level warning &
 cd /app/PixivDownloader
 python main.py &
 
+/usr/local/bin/tag_api &
+
 sleep 30s
 
 /usr/local/bin/tag_manager &
 
-/usr/local/bin/tag_api &
 
 wait
