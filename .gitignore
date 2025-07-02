@@ -220,6 +220,7 @@ target
 # Contains mutation testing data
 **/mutants.out*/
 tagmonolith.rar
+tagmonolith.tar
 .sqlx/
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
