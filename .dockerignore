@@ -45,6 +45,24 @@ Thumbs.db
 .dockerignore
 Dockerfile*
 docker-compose.override.yml
+tagmonolith.tar 
+tagmonolith.rar
 
 # Logs
 *.log
+
+TagService/lib64
+TagService/lib 
+TagService/bin 
+TagService/include
+TagService/share
+lib64
+lib 
+bin 
+include
+share
+PixivDownloader/lib64
+PixivDownloader/lib 
+PixivDownloader/bin 
+PixivDownloader/include
+PixivDownloader/share

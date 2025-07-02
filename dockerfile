@@ -19,10 +19,6 @@ RUN cd tag_api && cargo build --release
 
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y curl build-essential pkg-config libssl-dev && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
 # Setup Python service
 WORKDIR /app
 COPY TagService/ ./TagService
