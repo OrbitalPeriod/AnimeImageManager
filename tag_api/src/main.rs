@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_cors::Cors;
+use actix_web::{App, HttpServer, middleware::Logger, web};
 use database::SqlDatabase;
 use dotenv::dotenv;
 use endpoints::{find_images, image, root, search_characters, search_tags};
@@ -10,9 +11,8 @@ use env_logger::Env;
 use log::info;
 
 mod endpoints;
-mod response;
 mod requests;
-
+mod response;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -30,8 +30,12 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting api server on {}", address);
     HttpServer::new(move || {
+        let cors = Cors::default()
+            .allowed_origin("http://127.0.0.1:8080")
+            .allowed_methods(vec!["GET"]);
         App::new()
             .wrap(Logger::default())
+            .wrap(cors)
             .app_data(web::Data::new(db.clone()))
             .service(root)
             .service(find_images)
@@ -43,7 +47,6 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-
 
 #[derive(Clone, Debug)]
 struct Config {
