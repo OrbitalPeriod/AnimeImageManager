@@ -20,3 +20,7 @@ pub fn to_video(extension: &str) -> PathBuf {
         .join(Uuid::new_v4().to_string())
         .with_extension(extension)
 }
+
+pub fn to_storage_thumbnail(id: u32) -> PathBuf{
+    STORAGE_PATH.get().unwrap().join(format!("{id}_thumbnail")).with_extension("jpg")
+}

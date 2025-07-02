@@ -4,7 +4,7 @@ use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware::Logger, web};
 use database::SqlDatabase;
 use dotenv::dotenv;
-use endpoints::{find_images, image, root, search_characters, search_tags};
+use endpoints::{find_images, image, root, search_characters, search_tags, thumbnail};
 mod database;
 use anyhow::Result;
 use env_logger::Env;
@@ -42,6 +42,7 @@ async fn main() -> std::io::Result<()> {
             .service(image)
             .service(search_tags)
             .service(search_characters)
+            .service(thumbnail)
     })
     .bind(address)?
     .run()
@@ -64,13 +65,13 @@ fn load_config() -> Result<Config> {
             .map(|x| x.parse().unwrap())
             .unwrap_or(8080),
         image_url_prefix: std::env::var("IMAGE_URL_PREFIX")
-            .unwrap_or("http://127.0.0.1:8080/image".to_string()),
+            .unwrap_or("http://127.0.0.1:8080".to_string()),
         image_storage_path: std::env::var("STORAGE_DIR").unwrap_or("/Images/Storage".to_string()),
         database_url: std::env::var("DATABASE_URL")?,
     })
 }
 fn load_statics(config: &Config) -> Result<()> {
-    endpoints::IMAGE_URL_PREFIX
+    endpoints::IMAGE_PREFIX
         .set(config.image_url_prefix.clone())
         .unwrap();
     database::IMAGE_PATH

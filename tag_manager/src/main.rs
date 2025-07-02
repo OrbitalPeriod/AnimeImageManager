@@ -14,6 +14,7 @@ mod tag_fetcher;
 #[tokio::main]
 async fn main() -> !{
     let _ = dotenv();
+    println!("Running tagManager, with thumbnail processing");
 
     let config = Config::create();
     set_static_vars(&config);
@@ -43,6 +44,7 @@ struct Config {
     discarded_path: PathBuf,
     video_path: PathBuf,
     tagmanager_url : String,
+    thumbnail_size: u32,
 }
 
 impl Config {
@@ -70,6 +72,7 @@ impl Config {
             )
             .expect("Invalid other file type dir"),
             tagmanager_url: std::env::var("TAGSERVICE_URL").unwrap_or("http://127.0.0.1:8000".to_string()),
+            thumbnail_size: std::env::var("THUMBNAIL_SIZE").map(|x| x.parse().expect("THUMBNAIL_SIZE not valid integer")).unwrap_or(600),
         }
     }
 }

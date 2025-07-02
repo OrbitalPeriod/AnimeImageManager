@@ -9,6 +9,12 @@ pub trait Database {
         auth_level: AuthLevel,
     ) -> Result<PathBuf, SqlDatabaseError>;
 
+    async fn get_thumbnail_location(
+        &self,
+        id: u32,
+        auth_level: AuthLevel,
+    ) -> Result<PathBuf, SqlDatabaseError>;
+
     async fn get_filtered_images_paginated(
         &self,
         characters: Option<Vec<&str>>,
@@ -107,6 +113,29 @@ impl Database for SqlDatabase {
 
         if auth_level.is_allowed(record.rating) {
             let path = IMAGE_PATH.get().unwrap().join(format!("{}.png", record.id));
+
+            Ok(path)
+        } else {
+            Err(SqlDatabaseError::NotAllowed)
+        }
+    }
+
+    async fn get_thumbnail_location(
+        &self,
+        id: u32,
+        auth_level: AuthLevel,
+    ) -> Result<PathBuf, SqlDatabaseError> {
+        let record = sqlx::query!(
+            "SELECT id, rating as \"rating:Rating\" FROM image WHERE id = $1 AND thumbnail=true LIMIT 1",
+            id as i32
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(SqlDatabaseError::SqlxError)?
+        .ok_or(SqlDatabaseError::NotFound)?;
+
+        if auth_level.is_allowed(record.rating) {
+            let path = IMAGE_PATH.get().unwrap().join(format!("{}_thumbnail.jpg", record.id));
 
             Ok(path)
         } else {
@@ -219,7 +248,10 @@ impl Database for SqlDatabase {
         .fetch_all(&self.pool)
         .await?;
 
-        let tags = tags.iter().map(|x| (x.tag.clone(), x.count.unwrap() as u32)).collect();
+        let tags = tags
+            .iter()
+            .map(|x| (x.tag.clone(), x.count.unwrap() as u32))
+            .collect();
 
         let total_items = sqlx::query_scalar!(
             r#"
@@ -230,7 +262,8 @@ impl Database for SqlDatabase {
             like_pattern
         )
         .fetch_one(&self.pool)
-        .await?.unwrap() as u32;
+        .await?
+        .unwrap() as u32;
 
         Ok(PaginatedResult {
             items: tags,
@@ -252,11 +285,11 @@ impl Database for SqlDatabase {
         Ok(t.level)
     }
     async fn get_filtered_characters_paginated(
-            &self,
-            character: Option<&str>,
-            per_page: u32,
-            page: u32,
-        ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error> {
+        &self,
+        character: Option<&str>,
+        per_page: u32,
+        page: u32,
+    ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error> {
         let character = character.unwrap_or("");
         let like_pattern = format!("%{}%", character);
         let tags = sqlx::query!(
@@ -277,7 +310,10 @@ impl Database for SqlDatabase {
         .fetch_all(&self.pool)
         .await?;
 
-        let tags = tags.iter().map(|x| (x.character.clone(), x.count.unwrap() as u32)).collect();
+        let tags = tags
+            .iter()
+            .map(|x| (x.character.clone(), x.count.unwrap() as u32))
+            .collect();
 
         let total_items = sqlx::query_scalar!(
             r#"
@@ -288,14 +324,14 @@ impl Database for SqlDatabase {
             like_pattern
         )
         .fetch_one(&self.pool)
-        .await?.unwrap() as u32;
+        .await?
+        .unwrap() as u32;
 
         Ok(PaginatedResult {
             items: tags,
             total_items,
             total_pages: total_items.div_ceil(per_page),
         })
-
     }
 }
 

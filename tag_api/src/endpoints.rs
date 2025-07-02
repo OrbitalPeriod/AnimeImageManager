@@ -11,12 +11,10 @@ use tokio::io::AsyncReadExt;
 use crate::{
     database::{Database, SqlDatabase, SqlDatabaseError},
     requests::{FindCharacterQuery, FindImageRequest, FindTagQuery, ImageRequest},
-    response::{
-        ApiResponse, CharacterData, Imagedata, PaginatedResponse, TagData
-    },
+    response::{ApiResponse, CharacterData, Imagedata, PaginatedResponse, TagData},
 };
 
-pub static IMAGE_URL_PREFIX: OnceLock<String> = OnceLock::new();
+pub static IMAGE_PREFIX: OnceLock<String> = OnceLock::new();
 pub static MAX_PER_PAGE: u32 = 400;
 
 #[get("/")]
@@ -77,13 +75,76 @@ async fn image(
     ApiResponse::new_binary(StatusCode::OK, buffer, "image/png")
 }
 
+#[get("/thumbnail/{id}")]
+async fn thumbnail(
+    data: web::Data<SqlDatabase>,
+    id: web::Path<u32>,
+    query: web::Query<ImageRequest>,
+) -> ApiResponse<(), &'static str> {
+    let id = id.into_inner();
+    let level = if let Some(token) = &query.token {
+        match data.get_auth_level(token).await {
+            Ok(level) => level,
+            Err(SqlDatabaseError::NotFound) => crate::database::AuthLevel::Guest,
+            Err(SqlDatabaseError::NotAllowed) => unreachable!(),
+            Err(e) => {
+                error!("Unable to get level, falling back to guest: {:?}", e);
+                crate::database::AuthLevel::Guest
+            }
+        }
+    } else {
+        crate::database::AuthLevel::Guest
+    };
+
+    let path = match data.get_thumbnail_location(id, level).await {
+        Ok(path) => path,
+        Err(SqlDatabaseError::NotFound) => {
+            return ApiResponse::new_bad_request(
+                "Incorrect image id or no thumbnail yet processed",
+            );
+        }
+        Err(SqlDatabaseError::NotAllowed) => {
+            return ApiResponse::new_not_allowed("Not correct permissions for this image");
+        }
+        Err(e) => {
+            error!("sqlx error: {:?}", e);
+            return ApiResponse::new_internal_server_error("Internal server error");
+        }
+    };
+
+    let mut file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(e) => {
+            error!("Error opening file: {:?}", e);
+            return ApiResponse::new_internal_server_error("Internal server error");
+        }
+    };
+
+    let mut buffer = Vec::new();
+
+    if let Err(e) = file.read_to_end(&mut buffer).await {
+        error!("Error reading file: {:?}", e);
+        return ApiResponse::new_internal_server_error("Internal server error");
+    }
+
+    ApiResponse::new_binary(StatusCode::OK, buffer, "image/jpg")
+}
+
 #[get("/search")]
 async fn find_images(
     data: web::Data<SqlDatabase>,
     query: web::Query<FindImageRequest>,
 ) -> ApiResponse<PaginatedResponse<Imagedata>, &'static str> {
-    let characters: Option<Vec<_>> = query.characters.as_ref().and_then(|x| if x.is_empty() {None} else {Some(x)}).map(|x| x.split(',').collect());
-    let tags: Option<Vec<_>> = query.tags.as_ref().and_then(|x| if x.is_empty() {None} else {Some(x)}).map(|x| x.split(',').collect());
+    let characters: Option<Vec<_>> = query
+        .characters
+        .as_ref()
+        .and_then(|x| if x.is_empty() { None } else { Some(x) })
+        .map(|x| x.split(',').collect());
+    let tags: Option<Vec<_>> = query
+        .tags
+        .as_ref()
+        .and_then(|x| if x.is_empty() { None } else { Some(x) })
+        .map(|x| x.split(',').collect());
     let page = query.pages.page.unwrap_or(0);
     let per_page = query
         .pages
@@ -109,8 +170,19 @@ async fn find_images(
             Imagedata::new(
                 x.id,
                 format!(
-                    "{}/{}{}",
-                    IMAGE_URL_PREFIX.get().unwrap(),
+                    "{}/image/{}{}",
+                    IMAGE_PREFIX.get().unwrap(),
+                    x.id,
+                    query
+                        .token
+                        .as_ref()
+                        .map(|x| format!("?token={}", x))
+                        .as_ref()
+                        .map_or("", |v| v)
+                ),
+                format!(
+                    "{}/thumbnail/{}{}",
+                    IMAGE_PREFIX.get().unwrap(),
                     x.id,
                     query
                         .token
@@ -169,7 +241,10 @@ pub async fn search_tags(
         .map(|x| if x <= MAX_PER_PAGE { x } else { MAX_PER_PAGE })
         .unwrap_or(MAX_PER_PAGE);
 
-    let tags = match data.get_filtered_tags_paginated(query.tag.as_deref(), per_page, page).await {
+    let tags = match data
+        .get_filtered_tags_paginated(query.tag.as_deref(), per_page, page)
+        .await
+    {
         Ok(tags) => tags,
         Err(e) => {
             error!("Sqlx error: {}", e);
@@ -189,7 +264,7 @@ pub async fn search_tags(
     ApiResponse::new_success(PaginatedResponse::new(
         items,
         &format!(
-            "/tags?{}",
+            "/tag?{}",
             query
                 .tag
                 .as_ref()
@@ -215,7 +290,10 @@ pub async fn search_characters(
         .map(|x| if x <= MAX_PER_PAGE { x } else { MAX_PER_PAGE })
         .unwrap_or(MAX_PER_PAGE);
 
-    let tags = match data.get_filtered_characters_paginated(query.character.as_deref(), per_page, page).await {
+    let tags = match data
+        .get_filtered_characters_paginated(query.character.as_deref(), per_page, page)
+        .await
+    {
         Ok(tags) => tags,
         Err(e) => {
             error!("Sqlx error: {}", e);
@@ -235,7 +313,7 @@ pub async fn search_characters(
     ApiResponse::new_success(PaginatedResponse::new(
         items,
         &format!(
-            "/tags?{}",
+            "/character?{}",
             query
                 .character
                 .as_ref()

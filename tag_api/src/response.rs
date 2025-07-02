@@ -114,11 +114,12 @@ impl Paginated {
 pub struct Imagedata {
     id: i32,
     url: String,
+    thumbnail_url: String,
 }
 
 impl Imagedata {
-    pub fn new(id: i32, url: String) -> Self {
-        Self { id, url }
+    pub fn new(id: i32, url: String, thumbnail_url : String) -> Self {
+        Self { id, url, thumbnail_url}
     }
 }
 

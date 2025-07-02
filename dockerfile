@@ -21,14 +21,16 @@ FROM python:3.11-slim
 
 # Setup Python service
 WORKDIR /app
-COPY TagService/ ./TagService
 COPY TagService/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY TagService/ ./TagService
+
 WORKDIR /app 
-COPY PixivDownloader/ ./PixivDownloader 
 COPY PixivDownloader/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+COPY PixivDownloader/ ./PixivDownloader 
 
 # Copy Rust binaries
 COPY --from=base /build/tag_manager/tag_manager/target/release/tag_manager /usr/local/bin/
