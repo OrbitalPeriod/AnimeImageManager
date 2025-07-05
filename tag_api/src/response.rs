@@ -4,6 +4,8 @@ use actix_web::{HttpResponse, Responder, body::BoxBody, http::StatusCode};
 use serde::Serialize;
 use serde_json::json;
 
+use crate::database::Rating;
+
 pub struct ApiResponse<T: Serialize, E: Serialize> {
     status: StatusCode,
     data: ApiData<T, E>,
@@ -121,6 +123,22 @@ impl Imagedata {
     pub fn new(id: i32, url: String, thumbnail_url : String) -> Self {
         Self { id, url, thumbnail_url}
     }
+}
+
+pub struct ImageDbInfo{
+    pub tags: Vec<String>,
+    pub characters: Vec<String>,
+    pub rating: Rating,
+    pub id: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImageInfo{
+    pub tags: Vec<String>,
+    pub characters: Vec<String>,
+    pub rating: Rating,
+    pub image_url: String,
+    pub tag_url: String,
 }
 
 #[derive(Debug, Serialize)]

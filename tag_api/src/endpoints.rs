@@ -11,7 +11,7 @@ use tokio::io::AsyncReadExt;
 use crate::{
     database::{Database, SqlDatabase, SqlDatabaseError},
     requests::{FindCharacterQuery, FindImageRequest, FindTagQuery, ImageRequest},
-    response::{ApiResponse, CharacterData, Imagedata, PaginatedResponse, TagData},
+    response::{ApiResponse, CharacterData, ImageInfo, Imagedata, PaginatedResponse, TagData},
 };
 
 pub static IMAGE_PREFIX: OnceLock<String> = OnceLock::new();
@@ -325,4 +325,64 @@ pub async fn search_characters(
         per_page,
         tags.total_items,
     ))
+}
+
+#[get("/imageinfo/{id}")]
+async fn imageinfo(
+    data: web::Data<SqlDatabase>,
+    id: web::Path<u32>,
+    query: web::Query<ImageRequest>,
+) -> ApiResponse<ImageInfo, &'static str> {
+    let id = id.into_inner();
+    let level = if let Some(token) = &query.token {
+        match data.get_auth_level(token).await {
+            Ok(level) => level,
+            Err(SqlDatabaseError::NotFound) => crate::database::AuthLevel::Guest,
+            Err(SqlDatabaseError::NotAllowed) => unreachable!(),
+            Err(e) => {
+                error!("Unable to get level, falling back to guest: {e:?}");
+                crate::database::AuthLevel::Guest
+            }
+        }
+    } else {
+        crate::database::AuthLevel::Guest
+    };
+
+    let info = match data.get_image_information(id, level).await {
+        Ok(info) => info,
+        Err(e) => {
+            error!("Unable to get db: {e:?}");
+            return ApiResponse::new_internal_server_error("pain");
+        }
+    };
+
+    let data = ImageInfo {
+        tags: info.tags,
+        characters: info.characters,
+        rating: info.rating,
+        image_url: format!(
+            "{}/image/{}{}",
+            IMAGE_PREFIX.get().unwrap(),
+            info.id,
+            query
+                .token
+                .as_ref()
+                .map(|x| format!("?token={x}"))
+                .as_ref()
+                .map_or("", |v| v)
+        ),
+        tag_url: format!(
+            "{}/image/{}{}",
+            IMAGE_PREFIX.get().unwrap(),
+            info.id,
+            query
+                .token
+                .as_ref()
+                .map(|x| format!("?token={x}"))
+                .as_ref()
+                .map_or("", |v| v)
+        ),
+    };
+
+    ApiResponse::new_success(data)
 }

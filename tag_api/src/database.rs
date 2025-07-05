@@ -1,6 +1,9 @@
 use std::{fmt::Display, path::PathBuf, sync::OnceLock};
 
-use serde::Deserialize;
+use actix_web::web::to;
+use serde::{Deserialize, Serialize};
+
+use crate::response::{ImageDbInfo};
 
 pub trait Database {
     async fn get_image_location(
@@ -37,6 +40,11 @@ pub trait Database {
         per_page: u32,
         page: u32,
     ) -> Result<PaginatedResult<(String, u32)>, sqlx::error::Error>;
+    async fn get_image_information(
+        &self,
+        id: u32,
+        auth_level: AuthLevel,
+    ) -> Result<ImageDbInfo, sqlx::error::Error>;
 }
 
 #[derive(Debug, Clone, Copy, sqlx::Type, PartialEq, Eq)]
@@ -65,7 +73,7 @@ impl AuthLevel {
     }
 }
 
-#[derive(Debug, Clone, Copy, sqlx::Type, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, sqlx::Type, PartialEq, Eq, Deserialize, Serialize)]
 #[sqlx(type_name = "rating")]
 #[sqlx(rename_all = "lowercase")]
 pub enum Rating {
@@ -135,7 +143,10 @@ impl Database for SqlDatabase {
         .ok_or(SqlDatabaseError::NotFound)?;
 
         if auth_level.is_allowed(record.rating) {
-            let path = IMAGE_PATH.get().unwrap().join(format!("{}_thumbnail.jpg", record.id));
+            let path = IMAGE_PATH
+                .get()
+                .unwrap()
+                .join(format!("{}_thumbnail.jpg", record.id));
 
             Ok(path)
         } else {
@@ -332,6 +343,49 @@ impl Database for SqlDatabase {
             total_items,
             total_pages: total_items.div_ceil(per_page),
         })
+    }
+    async fn get_image_information(
+        &self,
+        id: u32,
+        auth_level: AuthLevel,
+    ) -> Result<ImageDbInfo, sqlx::error::Error> {
+        let tags: Vec<String> = sqlx::query_scalar!(
+            r#"
+            SELECT tag FROM tag
+            JOIN public.tag_images ti on tag.id = ti.tag_id
+            WHERE image_id = $1;
+            "#,
+            id as i64
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let characters: Vec<String> = sqlx::query_scalar!(
+            r#"
+            SELECT character FROM character 
+            JOIN public.character_images ci on character.id = ci.character_id 
+            WHERE image_id = $1;
+            "#,
+            id as i64
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let rating = sqlx::query_scalar!(
+            "SELECT rating as \"rating:Rating\" FROM image WHERE id = $1;",
+            id as i64
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let imageinfo = ImageDbInfo{
+            id,
+            tags,
+            characters,
+            rating
+        };
+
+        Ok(imageinfo)
     }
 }
 

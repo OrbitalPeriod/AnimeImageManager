@@ -4,7 +4,7 @@ use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware::Logger, web};
 use database::SqlDatabase;
 use dotenv::dotenv;
-use endpoints::{find_images, image, root, search_characters, search_tags, thumbnail};
+use endpoints::{find_images, image, imageinfo, root, search_characters, search_tags, thumbnail};
 mod database;
 use anyhow::Result;
 use env_logger::Env;
@@ -28,7 +28,7 @@ async fn main() -> std::io::Result<()> {
         config.port,
     );
 
-    info!("Starting api server on {}", address);
+    info!("Starting api server on {address}");
     HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://127.0.0.1:8080")
@@ -43,6 +43,7 @@ async fn main() -> std::io::Result<()> {
             .service(search_tags)
             .service(search_characters)
             .service(thumbnail)
+            .service(imageinfo)
     })
     .bind(address)?
     .run()
