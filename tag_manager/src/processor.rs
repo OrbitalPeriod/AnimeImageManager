@@ -125,7 +125,7 @@ async fn thumbnail_images(database: &impl Database) -> Result<()> {
         .collect::<Vec<_>>()
         .await;
 
-    todo!()
+    Ok(())
 }
 async fn thumbnail_image(database: &impl Database, image_id: u32) -> Result<()> {
     let path = to_storage(image_id);
