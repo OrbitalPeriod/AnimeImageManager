@@ -68,7 +68,8 @@ impl AuthLevel {
         match self {
             AuthLevel::Admin => true,
             AuthLevel::PrivilegedUser => true,
-            _ => rating == Rating::General || rating == Rating::Sensitive,
+            AuthLevel::User => rating == Rating::General || rating == Rating::Sensitive,
+            AuthLevel::Guest => false,
         }
     }
 }

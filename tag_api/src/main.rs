@@ -31,7 +31,7 @@ async fn main() -> std::io::Result<()> {
     info!("Starting api server on {address}");
     HttpServer::new(move || {
         let cors = Cors::default()
-            .allowed_origin("http://127.0.0.1:8080")
+            .allowed_origin(&config.website_url)
             .allowed_methods(vec!["GET"]);
         App::new()
             .wrap(Logger::default())
@@ -57,6 +57,7 @@ struct Config {
     database_url: String,
     image_url_prefix: String,
     image_storage_path: String,
+    website_url: String,
 }
 
 fn load_config() -> Result<Config> {
@@ -69,6 +70,7 @@ fn load_config() -> Result<Config> {
             .unwrap_or("http://127.0.0.1:8080".to_string()),
         image_storage_path: std::env::var("STORAGE_DIR").unwrap_or("/Images/Storage".to_string()),
         database_url: std::env::var("DATABASE_URL")?,
+        website_url: std::env::var("WEBSITE_URL")?,
     })
 }
 fn load_statics(config: &Config) -> Result<()> {
